@@ -1,0 +1,29 @@
+{
+  "network_type": "EVM",
+  "slug": "ethereum_mainnet",
+  "name": "Ethereum Mainnet",
+  "rpc_urls": [
+    {
+      "type_": "rpc",
+      "url": {
+        "type": "environment",
+        "value": "ETHEREUM_MAINNET_RPC_URL"
+      },
+      "weight": 100
+    }
+  ],
+  "chain_id": 1,
+  "block_time_ms": 12000,
+  "confirmation_blocks": 12,
+  "cron_schedule": "0 */1 * * * *",
+  "max_past_blocks": 54,
+  "store_blocks": false,
+  "recovery_config": {
+    "enabled": false,
+    "cron_schedule": "0 */5 * * * *",
+    "max_blocks_per_run": 10,
+    "max_block_age": 1000,
+    "max_retries": 3,
+    "retry_delay_ms": 1000
+  }
+}

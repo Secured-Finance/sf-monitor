@@ -1,0 +1,12 @@
+{
+  "sf_monitor_log": {
+    "name": "Local Log Trigger",
+    "trigger_type": "script",
+    "config": {
+      "language": "Bash",
+      "script_path": "./config/triggers/scripts/log_match.sh",
+      "arguments": [],
+      "timeout_ms": 2000
+    }
+  }
+}

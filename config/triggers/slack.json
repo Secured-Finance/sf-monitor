@@ -1,0 +1,16 @@
+{
+  "sf_monitor_slack": {
+    "name": "Test Slack Notification",
+    "trigger_type": "slack",
+    "config": {
+      "slack_url": {
+        "type": "environment",
+        "value": "SLACK_WEBHOOK_URL"
+      },
+      "message": {
+        "title": "${monitor.name} triggered",
+        "body": "${monitor.name} triggered\nUser: ${events.0.args.user}\nCurrency: ${events.0.args.ccy}\nAmount: ${events.0.args.amount}\nTx: https://sepolia.etherscan.io/tx/${transaction.hash}"
+      }
+    }
+  }
+}

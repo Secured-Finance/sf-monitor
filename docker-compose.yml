@@ -1,0 +1,18 @@
+---
+# Ports `8081` for metrics server.
+
+services:
+  monitor:
+    image: openzeppelin/openzeppelin-monitor:latest
+    env_file: .env
+    environment:
+      LOG_LEVEL: ${RUST_LOG:-info}
+      IN_DOCKER: 'true'
+    restart: on-failure:5
+    mem_swappiness: 0
+    security_opt:
+      - no-new-privileges
+    volumes:
+      - ./config:/app/config/:ro
+      - ${MONITOR_DATA_DIR:-/dev/null}:/app/data
+      - ${LOG_DATA_DIR:-./logs}:/app/logs

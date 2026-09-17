@@ -1,0 +1,68 @@
+{
+  "name": "TokenVault Deposit/Withdraw - Ethereum Sepolia",
+  "paused": false,
+  "networks": ["ethereum_sepolia"],
+  "addresses": [
+    {
+      "address": "0xa7A13c85296d5c6aebaeE99ee40761E2bB105f92",
+      "contract_spec": [
+        {
+          "anonymous": false,
+          "inputs": [
+            { "indexed": true, "internalType": "address", "name": "user", "type": "address" },
+            { "indexed": false, "internalType": "bytes32", "name": "ccy", "type": "bytes32" },
+            { "indexed": false, "internalType": "uint256", "name": "amount", "type": "uint256" },
+            { "indexed": false, "internalType": "address", "name": "caller", "type": "address" }
+          ],
+          "name": "Deposit",
+          "type": "event"
+        },
+        {
+          "anonymous": false,
+          "inputs": [
+            { "indexed": true, "internalType": "address", "name": "user", "type": "address" },
+            { "indexed": false, "internalType": "bytes32", "name": "ccy", "type": "bytes32" },
+            { "indexed": false, "internalType": "uint256", "name": "amount", "type": "uint256" }
+          ],
+          "name": "Withdraw",
+          "type": "event"
+        },
+        {
+          "inputs": [
+            { "internalType": "bytes32", "name": "_ccy", "type": "bytes32" },
+            { "internalType": "uint256", "name": "_amount", "type": "uint256" }
+          ],
+          "name": "deposit",
+          "outputs": [],
+          "stateMutability": "payable",
+          "type": "function"
+        },
+        {
+          "inputs": [
+            { "internalType": "bytes32", "name": "_ccy", "type": "bytes32" },
+            { "internalType": "uint256", "name": "_amount", "type": "uint256" }
+          ],
+          "name": "withdraw",
+          "outputs": [],
+          "stateMutability": "nonpayable",
+          "type": "function"
+        }
+      ]
+    }
+  ],
+  "match_conditions": {
+    "functions": [
+      { "signature": "deposit(bytes32,uint256)", "expression": null },
+      { "signature": "withdraw(bytes32,uint256)", "expression": null }
+    ],
+    "events": [
+      { "signature": "Deposit(address,bytes32,uint256,address)", "expression": null },
+      { "signature": "Withdraw(address,bytes32,uint256)", "expression": null }
+    ],
+    "transactions": [
+      { "status": "Success", "expression": null }
+    ]
+  },
+  "trigger_conditions": [],
+  "triggers": ["sf_monitor_slack", "sf_monitor_log"]
+}
