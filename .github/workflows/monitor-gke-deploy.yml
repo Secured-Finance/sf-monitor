@@ -1,0 +1,142 @@
+name: Deploy sf-monitor to GKE
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+    paths:
+      - 'config/**'
+      - 'tools/**'
+      - 'Dockerfile'
+      - '.github/workflows/monitor-gke-deploy.yml'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment'
+        required: true
+        default: 'development'
+        type: choice
+        options:
+          - development
+          - staging
+          - production
+
+env:
+  PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+  GKE_CLUSTER: ${{ vars.GKE_CLUSTER_NAME }}
+  GKE_ZONE: ${{ vars.GKE_ZONE }}
+  DEPLOYMENT_NAME: sf-monitor
+  IMAGE: sf-monitor
+  REGISTRY: ${{ vars.GCP_REGISTRY }}
+  REPOSITORY: ${{ vars.GCP_REPOSITORY }}
+  NPM_AUTH_TOKEN: ${{ secrets.NPM_AUTH_TOKEN }}
+
+jobs:
+  identify-env:
+    name: Identify the environment
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop' }}
+    outputs:
+      environment: ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.environment) || github.ref == 'refs/heads/main' && 'staging' || 'development' }}
+
+  deploy:
+    name: Deploy
+    runs-on: ubuntu-latest
+    needs: [identify-env]
+    environment: ${{ needs.identify-env.outputs.environment }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - id: 'auth'
+        uses: 'google-github-actions/auth@v2'
+        with:
+          credentials_json: '${{ secrets.GCP_SA_KEY }}'
+
+      - name: Set up Google Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ env.PROJECT_ID }}
+          install_components: 'gke-gcloud-auth-plugin'
+
+      - name: Configure Docker
+        run: |
+          gcloud --quiet auth configure-docker ${{ env.REGISTRY }}
+
+      - name: Get GKE credentials
+        run: |
+          gcloud container clusters get-credentials ${{ env.GKE_CLUSTER }} --zone ${{ env.GKE_ZONE }} --project ${{ env.PROJECT_ID }}
+
+      - name: Build
+        run: |
+          docker build \
+            --secret id=npm_auth_token,env=NPM_AUTH_TOKEN \
+            --build-arg SF_ENV=${{ needs.identify-env.outputs.environment }} \
+            --tag "${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE }}-${{ needs.identify-env.outputs.environment }}:${{ github.sha }}" \
+            --tag "${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE }}-${{ needs.identify-env.outputs.environment }}:latest" \
+            .
+
+      - name: Publish
+        run: |
+          docker push "${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE }}-${{ needs.identify-env.outputs.environment }}:${{ github.sha }}"
+          docker push "${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE }}-${{ needs.identify-env.outputs.environment }}:latest"
+
+      - name: Create Kubernetes secrets
+        run: |
+          kubectl delete secret sf-monitor-secrets-${{ needs.identify-env.outputs.environment }} --ignore-not-found
+
+          kubectl create secret generic sf-monitor-secrets-${{ needs.identify-env.outputs.environment }} \
+            --from-literal=SLACK_WEBHOOK_URL=${{ secrets.SLACK_WEBHOOK_URL }} \
+            --from-literal=ETHEREUM_MAINNET_RPC_URL=${{ secrets.ETHEREUM_MAINNET_RPC_URL }} \
+            --from-literal=ETHEREUM_SEPOLIA_RPC_URL=${{ secrets.ETHEREUM_SEPOLIA_RPC_URL }} \
+            --from-literal=ARBITRUM_ONE_RPC_URL=${{ secrets.ARBITRUM_ONE_RPC_URL }} \
+            --from-literal=ARBITRUM_SEPOLIA_RPC_URL=${{ secrets.ARBITRUM_SEPOLIA_RPC_URL }}
+
+      - name: Deploy
+        run: |
+          cat <<EOF > deployment.yaml
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata:
+            name: ${{ env.DEPLOYMENT_NAME }}-${{ needs.identify-env.outputs.environment }}
+            labels:
+              app: ${{ env.DEPLOYMENT_NAME }}-${{ needs.identify-env.outputs.environment }}
+          spec:
+            replicas: 1
+            strategy:
+              type: Recreate
+            selector:
+              matchLabels:
+                app: ${{ env.DEPLOYMENT_NAME }}-${{ needs.identify-env.outputs.environment }}
+            template:
+              metadata:
+                labels:
+                  app: ${{ env.DEPLOYMENT_NAME }}-${{ needs.identify-env.outputs.environment }}
+              spec:
+                containers:
+                - name: ${{ env.DEPLOYMENT_NAME }}-${{ needs.identify-env.outputs.environment }}
+                  image: "${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE }}-${{ needs.identify-env.outputs.environment }}:${{ github.sha }}"
+                  resources:
+                    requests:
+                      cpu: "100m"
+                      memory: "256Mi"
+                    limits:
+                      cpu: "1000m"
+                      memory: "512Mi"
+                  env:
+                    - name: SF_ENV
+                      value: "${{ needs.identify-env.outputs.environment }}"
+                    - name: LOG_LEVEL
+                      value: "info"
+                    - name: IN_DOCKER
+                      value: "true"
+                  envFrom:
+                    - secretRef:
+                        name: sf-monitor-secrets-${{ needs.identify-env.outputs.environment }}
+                restartPolicy: Always
+          EOF
+
+          kubectl apply -f deployment.yaml
+          kubectl rollout status deployment/${{ env.DEPLOYMENT_NAME }}-${{ needs.identify-env.outputs.environment }}
