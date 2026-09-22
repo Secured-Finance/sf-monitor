@@ -39,6 +39,9 @@ jobs:
     if: ${{ github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop' }}
     outputs:
       environment: ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.environment) || github.ref == 'refs/heads/main' && 'staging' || 'development' }}
+    steps:
+      - name: Resolve environment
+        run: echo "Deploying environment ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.environment) || github.ref == 'refs/heads/main' && 'staging' || 'development' }}"
 
   deploy:
     name: Deploy
