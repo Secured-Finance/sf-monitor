@@ -1,0 +1,6 @@
+{
+  "ethereum_mainnet": "https://etherscan.io",
+  "ethereum_sepolia": "https://sepolia.etherscan.io",
+  "arbitrum_one": "https://arbiscan.io",
+  "arbitrum_sepolia": "https://sepolia.arbiscan.io"
+}

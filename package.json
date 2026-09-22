@@ -1,0 +1,32 @@
+{
+  "name": "sf-monitor",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "pregenerate": "rm -rf ./config/monitors/*.json",
+    "generate": "tsx tools/generate-monitors.ts",
+    "prettier:check": "prettier --check '**/*.{ts,js,json}'",
+    "prettier:fix": "prettier --write '**/*.{ts,js,json}'",
+    "typecheck": "tsc --noEmit",
+    "lint:check": "eslint . --ext js,ts",
+    "lint:fix": "eslint --fix . --ext js,ts",
+    "prepare": "husky install"
+  },
+  "dependencies": {
+    "@secured-finance/contracts": "1.5.0"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "^18.4.1",
+    "@commitlint/config-conventional": "^18.4.0",
+    "@types/node": "^20.8.10",
+    "@typescript-eslint/eslint-plugin": "^6.10.0",
+    "@typescript-eslint/parser": "^6.10.0",
+    "eslint": "^8.53.0",
+    "eslint-config-prettier": "^9.0.0",
+    "eslint-plugin-prettier": "^5.0.1",
+    "husky": "^8.0.3",
+    "prettier": "^3.1.0",
+    "tsx": "^4.19.3",
+    "typescript": "^5.2.2"
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "env": {
+    "node": true,
+    "es2020": true
+  },
+  "parser": "@typescript-eslint/parser",
+  "plugins": ["@typescript-eslint"],
+  "extends": [
+    "eslint:recommended",
+    "plugin:@typescript-eslint/eslint-recommended",
+    "plugin:@typescript-eslint/recommended",
+    "prettier"
+  ],
+  "ignorePatterns": ["node_modules", "old-definitions"],
+  "rules": {
+    "no-console": ["warn", { "allow": ["info", "warn", "error", "table"] }],
+    "no-unused-vars": "off",
+    "@typescript-eslint/no-unused-vars": ["error"]
+  }
+}

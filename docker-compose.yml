@@ -1,9 +1,12 @@
 ---
-# Ports `8081` for metrics server.
+# Metrics server (port 8081) is disabled by default (METRICS_ENABLED unset, see
+# .env.example) and not exposed here. To enable it, set METRICS_ENABLED=true in .env
+# and add a `ports: ["8081:8081"]` mapping below.
 
 services:
   monitor:
-    image: openzeppelin/openzeppelin-monitor:latest
+    build: .
+    image: sf-monitor:local
     env_file: .env
     environment:
       LOG_LEVEL: ${RUST_LOG:-info}
@@ -14,5 +17,5 @@ services:
       - no-new-privileges
     volumes:
       - ./config:/app/config/:ro
-      - ${MONITOR_DATA_DIR:-/dev/null}:/app/data
+      - ${MONITOR_DATA_DIR:?MONITOR_DATA_DIR must be set in .env - a /dev/null fallback would silently drop last-processed-block persistence}:/app/data
       - ${LOG_DATA_DIR:-./logs}:/app/logs
