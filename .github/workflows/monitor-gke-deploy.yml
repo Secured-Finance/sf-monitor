@@ -91,11 +91,11 @@ jobs:
           kubectl delete secret sf-monitor-secrets-${{ needs.identify-env.outputs.environment }} --ignore-not-found
 
           kubectl create secret generic sf-monitor-secrets-${{ needs.identify-env.outputs.environment }} \
-            --from-literal=SLACK_WEBHOOK_URL=${{ secrets.SLACK_WEBHOOK_URL }} \
-            --from-literal=ETHEREUM_MAINNET_RPC_URL=${{ secrets.ETHEREUM_MAINNET_RPC_URL }} \
-            --from-literal=ETHEREUM_SEPOLIA_RPC_URL=${{ secrets.ETHEREUM_SEPOLIA_RPC_URL }} \
-            --from-literal=ARBITRUM_ONE_RPC_URL=${{ secrets.ARBITRUM_ONE_RPC_URL }} \
-            --from-literal=ARBITRUM_SEPOLIA_RPC_URL=${{ secrets.ARBITRUM_SEPOLIA_RPC_URL }}
+            --from-literal="SLACK_WEBHOOK_URL=${{ secrets.SLACK_WEBHOOK_URL }}" \
+            --from-literal="ETHEREUM_MAINNET_RPC_URL=${{ secrets.ETHEREUM_MAINNET_RPC_URL }}" \
+            --from-literal="ETHEREUM_SEPOLIA_RPC_URL=${{ secrets.ETHEREUM_SEPOLIA_RPC_URL }}" \
+            --from-literal="ARBITRUM_ONE_RPC_URL=${{ secrets.ARBITRUM_ONE_RPC_URL }}" \
+            --from-literal="ARBITRUM_SEPOLIA_RPC_URL=${{ secrets.ARBITRUM_SEPOLIA_RPC_URL }}"
 
       - name: Deploy
         run: |
