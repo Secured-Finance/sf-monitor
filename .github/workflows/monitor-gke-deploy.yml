@@ -138,6 +138,12 @@ jobs:
                   envFrom:
                     - secretRef:
                         name: sf-monitor-secrets-${{ needs.identify-env.outputs.environment }}
+                  volumeMounts:
+                    - name: data
+                      mountPath: /app/data
+                volumes:
+                  - name: data
+                    emptyDir: {}
                 restartPolicy: Always
           EOF
 
