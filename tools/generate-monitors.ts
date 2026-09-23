@@ -48,6 +48,7 @@ function appliesTo(concern: Concern, network: string): boolean {
 }
 
 function writeJson(filePath: string, data: unknown): void {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
   fs.writeFileSync(filePath, JSON.stringify(data, null, 2) + '\n');
 }
 
