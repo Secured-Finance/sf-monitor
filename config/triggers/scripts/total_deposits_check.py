@@ -109,7 +109,7 @@ def main():
 
     env_label = os.environ.get("SF_ENV", "")
 
-    w3 = Web3(Web3.HTTPProvider(os.environ[rpc_url_env]))
+    w3 = Web3(Web3.HTTPProvider(os.environ[rpc_url_env].strip()))
 
     token_vault = w3.eth.contract(address=token_vault_address, abi=TOKEN_VAULT_ABI)
     ccy_bytes32 = bytes.fromhex(ccy_hex[2:] if ccy_hex.startswith("0x") else ccy_hex)
@@ -138,7 +138,7 @@ def main():
         sys.exit(0)
 
     requests.post(
-        os.environ["SLACK_WEBHOOK_URL"],
+        os.environ["SLACK_WEBHOOK_URL"].strip(),
         json={
             "text": (
                 f"[{env_label}:{network_name}] Big Withdrawal Detected\n"
