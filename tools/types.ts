@@ -79,10 +79,9 @@ export interface Concern {
   // Only for concerns whose watched address can't be resolved from a single deployment
   // artifact - e.g. block-unit-price/itayose, which are emitted by a per-currency
   // LendingMarket beacon proxy (delegatecall'd from OrderActionLogic/OrderBookLogic),
-  // never by LendingMarketController itself - verified with the Solidity team, see
-  // memory/project_lendingmarket_event_emission.md. Resolved live via RPC at generate
-  // time (tools/concerns/lending-market-addresses.ts) instead of a static artifact
-  // address. Concerns without this still resolve to
+  // never by LendingMarketController itself - verified directly with the Solidity team.
+  // Resolved live via RPC at generate time (tools/concerns/lending-market-addresses.ts)
+  // instead of a static artifact address. Concerns without this still resolve to
   // artifacts[contractName].address, as before.
   resolveAddresses?: (ctx: ResolveAddressesContext) => Promise<string[]>;
 }

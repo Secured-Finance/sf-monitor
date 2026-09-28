@@ -3,8 +3,7 @@ import { ResolveAddressesContext } from '../types';
 // Resolves every currently-active currency's per-currency LendingMarket beacon proxy
 // address - the actual emitter of BlockUnitPriceHistoryUpdated/ItayoseExecuted (both
 // delegatecall'd from that proxy, via OrderActionLogic/OrderBookLogic respectively -
-// never LendingMarketController itself). Verified with the Solidity team - see
-// memory/project_lendingmarket_event_emission.md.
+// never LendingMarketController itself). Verified directly with the Solidity team.
 //
 // LendingMarketController.getUsedCurrencies() is NOT the right getter here - it's
 // per-user and actively mutated, not a market registry. The correct enumeration is

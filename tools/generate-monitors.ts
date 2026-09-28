@@ -1,9 +1,10 @@
-// Generates config/monitors/<network>_lendingmarketcontroller_<concern>.json for every
-// chain the selected environment supports. Instead of calling the Defender SDK to
-// create a monitor (as the old Autotask deploy scripts did), writes the equivalent OZ
-// Monitor JSON straight to disk. Contract address is resolved dynamically for that
-// environment's deploy-stage via deployments.ts (same require() mechanism the old code
-// used); event ABI/match-conditions/trigger-wiring are defined once per concern in
+// Generates config/monitors/<network>-<concern>.json for every chain the selected
+// environment supports. Instead of calling the Defender SDK to create a monitor (as the
+// old Autotask deploy scripts did), writes the equivalent OZ Monitor JSON straight to
+// disk. Each concern's watched address(es) come from either a single deployment
+// artifact (deployments.ts, same require() mechanism the old code used) or, for
+// concerns needing more than that, a live RPC call (concern.resolveAddresses - see
+// below); event ABI/match-conditions/trigger-wiring are defined once per concern in
 // tools/concerns/.
 //
 // Only one environment ever runs on a given monitor instance (see environments.ts), so

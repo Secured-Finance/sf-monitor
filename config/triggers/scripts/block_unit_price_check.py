@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
-"""On a LendingMarketController BlockUnitPriceHistoryUpdated match, tracks a rolling
-5-entry block-unit-price history per (currency, maturity) market and alerts Slack on
-any change within that window.
+"""On a BlockUnitPriceHistoryUpdated match (emitted by a per-currency LendingMarket
+beacon proxy, not LendingMarketController - see
+tools/concerns/lending-market-addresses.ts), tracks a rolling 5-entry block-unit-price
+history per (currency, maturity) market and alerts Slack on any change within that
+window.
 
 Ported from the old Defender Autotask handler (block-unit-price-fluctuations/handler.ts)
 with minimal changes: same 5-entry rolling window, same "alert on any nonzero percent
