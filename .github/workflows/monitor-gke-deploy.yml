@@ -1,15 +1,10 @@
 name: Deploy sf-monitor to GKE
 
+# Manual dispatch only - development/staging exist for testing and are never deployed
+# to GCP automatically; production deploys are also deliberate, not triggered by a push,
+# since a misconfigured monitor means missed alerts on real protocol risk (see
+# CLAUDE.md's working principles). Run this workflow manually and pick the environment.
 on:
-  push:
-    branches:
-      - main
-      - develop
-    paths:
-      - 'config/**'
-      - 'tools/**'
-      - 'Dockerfile'
-      - '.github/workflows/monitor-gke-deploy.yml'
   workflow_dispatch:
     inputs:
       environment:
@@ -44,12 +39,11 @@ jobs:
   identify-env:
     name: Identify the environment
     runs-on: ubuntu-latest
-    if: ${{ github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop' }}
     outputs:
-      environment: ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.environment) || github.ref == 'refs/heads/main' && 'staging' || 'development' }}
+      environment: ${{ github.event.inputs.environment }}
     steps:
       - name: Resolve environment
-        run: echo "Deploying environment ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.environment) || github.ref == 'refs/heads/main' && 'staging' || 'development' }}"
+        run: echo "Deploying environment ${{ github.event.inputs.environment }}"
 
   deploy:
     name: Deploy

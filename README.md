@@ -62,4 +62,4 @@ See [CLAUDE.md](CLAUDE.md) for the current status of each monitored concern, kno
 
 ## Deployment
 
-Pushes to `main` (staging) and `develop` (development), or a manual workflow dispatch (any environment), build and push the Docker image and roll out the GKE deployment — see `.github/workflows/monitor-gke-deploy.yml`.
+Deploys are manual only — run the `Deploy sf-monitor to GKE` workflow (`.github/workflows/monitor-gke-deploy.yml`) via `workflow_dispatch` and pick `development`, `staging`, or `production`. There's no push-triggered deploy: development/staging exist for testing only, and production deploys are deliberate rather than tied to a merge.
