@@ -11,3 +11,4 @@ config/monitors/*-liquidations.json
 config/monitors/*-autorolls.json
 config/monitors/*-itayose.json
 config/monitors/*-totaldeposits.json
+config/monitors/*-blockunitprice.json

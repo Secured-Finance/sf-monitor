@@ -13,6 +13,15 @@
 // generated file will be lost - edit tools/concerns/* or tools/environments.ts instead.
 //
 // Usage: SF_ENV=development|staging|production npm run generate
+//
+// Some concerns (block-unit-price, itayose) can't resolve their watched address from a
+// single deployment artifact - they're emitted by a per-currency LendingMarket beacon
+// proxy, not LendingMarketController itself (see
+// tools/concerns/lending-market-addresses.ts). Those need a live RPC call at generate
+// time via concern.resolveAddresses, so this loads .env locally the same way
+// docker-compose's env_file does for the monitor container - the generator never
+// needed an RPC connection before this.
+import * as dotenv from 'dotenv';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -25,7 +34,15 @@ import {
   SF_ENV,
   isSfEnv,
 } from './environments';
-import { Concern, ContractName } from './types';
+import { getPublicClient } from './rpc';
+import {
+  CONTRACT_NAMES,
+  Concern,
+  ContractArtifact,
+  ContractName,
+} from './types';
+
+dotenv.config();
 
 const REPO_ROOT = path.resolve(__dirname, '..');
 const MONITORS_DIR = path.join(REPO_ROOT, 'config', 'monitors');
@@ -52,17 +69,19 @@ function writeJson(filePath: string, data: unknown): void {
   fs.writeFileSync(filePath, JSON.stringify(data, null, 2) + '\n');
 }
 
-function buildMonitor(chain: ChainTarget, address: string, concern: Concern) {
+function buildMonitor(
+  chain: ChainTarget,
+  addresses: string[],
+  concern: Concern,
+) {
   return {
     name: `${concern.label} - ${chain.display}`,
     paused: false,
     networks: [chain.network],
-    addresses: [
-      {
-        address,
-        contract_spec: [concern.libraryEventAbi],
-      },
-    ],
+    addresses: addresses.map((address) => ({
+      address,
+      contract_spec: [concern.libraryEventAbi],
+    })),
     match_conditions: {
       events: [{ signature: concern.eventSignature, expression: null }],
       functions: [],
@@ -73,28 +92,36 @@ function buildMonitor(chain: ChainTarget, address: string, concern: Concern) {
   };
 }
 
-function main(): void {
+async function main(): Promise<void> {
   const env = parseEnv();
   const chains = ENV_CHAINS[env];
   const concerns = Object.values(CONCERN_DEFINITIONS);
-  const contractNames = [...new Set(concerns.map((c) => c.contractName))];
   let count = 0;
 
   for (const chain of chains) {
-    const addresses = Object.fromEntries(
-      contractNames.map((contractName) => [
+    // Every known contract's artifact is resolved up front, regardless of which
+    // concerns apply to this chain - CONTRACT_NAMES is small and concerns needing
+    // resolveAddresses (see tools/types.ts) need more than just their own
+    // contractName's artifact (e.g. block-unit-price/itayose need both
+    // LendingMarketController and CurrencyController).
+    const artifacts = Object.fromEntries(
+      CONTRACT_NAMES.map((contractName) => [
         contractName,
-        getContractArtifact(contractName, chain.deployStage).address,
+        getContractArtifact(contractName, chain.deployStage),
       ]),
-    ) as Record<ContractName, string>;
+    ) as Record<ContractName, ContractArtifact>;
+
+    const client = getPublicClient(chain.network);
 
     for (const concern of concerns) {
       if (!appliesTo(concern, chain.network)) continue;
+
+      const addresses = concern.resolveAddresses
+        ? await concern.resolveAddresses({ chain, client, artifacts })
+        : [artifacts[concern.contractName].address];
+
       const filePath = monitorPath(chain.network, concern);
-      writeJson(
-        filePath,
-        buildMonitor(chain, addresses[concern.contractName], concern),
-      );
+      writeJson(filePath, buildMonitor(chain, addresses, concern));
       count += 1;
     }
   }
@@ -103,4 +130,7 @@ function main(): void {
   console.log(`generated ${count} monitor file(s) for env=${env}`);
 }
 
-main();
+main().catch((error) => {
+  console.error(error);
+  process.exit(1);
+});

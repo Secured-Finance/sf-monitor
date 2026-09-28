@@ -1,3 +1,4 @@
+import { resolveLendingMarketAddresses } from './lending-market-addresses';
 import { Concern } from '../types';
 
 export const itayose: Concern = {
@@ -7,6 +8,9 @@ export const itayose: Concern = {
   eventSignature:
     'ItayoseExecuted(bytes32,uint256,uint256,uint256,uint256,uint256)',
   trigger: { type: 'slack', id: 'sf_monitor_slack_itayose' },
+  // Emitted by the per-currency LendingMarket beacon proxy, not LendingMarketController
+  // - see tools/concerns/lending-market-addresses.ts.
+  resolveAddresses: resolveLendingMarketAddresses,
   libraryEventAbi: {
     anonymous: false,
     inputs: [

@@ -2,12 +2,7 @@
 // @secured-finance/contracts package, which bundles deployments/<stage>/<Contract>.json.
 // No hardcoded addresses.
 import { DeployStage } from './environments';
-import { ContractName } from './types';
-
-export interface ContractArtifact {
-  abi: unknown[];
-  address: string;
-}
+import { ContractArtifact, ContractName } from './types';
 
 const getContractArtifact = (
   contractName: ContractName,

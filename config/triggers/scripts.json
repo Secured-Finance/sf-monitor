@@ -7,5 +7,14 @@
       "script_path": "./config/triggers/scripts/total_deposits_check.py",
       "timeout_ms": 5000
     }
+  },
+  "sf_monitor_block_unit_price_check": {
+    "name": "Block Unit Price Fluctuation Check",
+    "trigger_type": "script",
+    "config": {
+      "language": "Python",
+      "script_path": "./config/triggers/scripts/block_unit_price_check.py",
+      "timeout_ms": 5000
+    }
   }
 }

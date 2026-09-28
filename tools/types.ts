@@ -1,3 +1,6 @@
+import type { PublicClient } from 'viem';
+import { ChainTarget } from './environments';
+
 export interface AbiEventInput {
   indexed: boolean;
   internalType: string;
@@ -29,12 +32,30 @@ export interface ScriptTrigger {
 export type Trigger = SlackTrigger | ScriptTrigger;
 
 // Contracts the generator can resolve an address for via deployments.ts - add a name
-// here when a new contract's concerns are added to tools/concerns/.
+// here when a new contract's concerns are added to tools/concerns/. CurrencyController
+// is needed to enumerate currencies for concerns using resolveAddresses below, not
+// itself the target of any concern.
 export const CONTRACT_NAMES = [
   'LendingMarketController',
   'TokenVault',
+  'CurrencyController',
 ] as const;
 export type ContractName = (typeof CONTRACT_NAMES)[number];
+
+export interface ContractArtifact {
+  abi: unknown[];
+  address: string;
+}
+
+// Passed to a concern's resolveAddresses hook (see below). `client` has no chain
+// specified - reads only, and OZ Monitor config has no notion of a "chain id" beyond
+// the network slug, so there's nothing for viem to validate an RPC's chain id against
+// here anyway.
+export interface ResolveAddressesContext {
+  chain: ChainTarget;
+  client: PublicClient;
+  artifacts: Record<ContractName, ContractArtifact>;
+}
 
 // One contract event OZ Monitor should watch and alert on.
 export interface Concern {
@@ -55,4 +76,13 @@ export interface Concern {
   // config/triggers/scripts/total_deposits_check.py) rather than needing per-network
   // config here.
   networks?: string[];
+  // Only for concerns whose watched address can't be resolved from a single deployment
+  // artifact - e.g. block-unit-price/itayose, which are emitted by a per-currency
+  // LendingMarket beacon proxy (delegatecall'd from OrderActionLogic/OrderBookLogic),
+  // never by LendingMarketController itself - verified with the Solidity team, see
+  // memory/project_lendingmarket_event_emission.md. Resolved live via RPC at generate
+  // time (tools/concerns/lending-market-addresses.ts) instead of a static artifact
+  // address. Concerns without this still resolve to
+  // artifacts[contractName].address, as before.
+  resolveAddresses?: (ctx: ResolveAddressesContext) => Promise<string[]>;
 }

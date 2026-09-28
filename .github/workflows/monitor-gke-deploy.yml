@@ -31,6 +31,14 @@ env:
   REGISTRY: ${{ vars.GCP_REGISTRY }}
   REPOSITORY: ${{ vars.GCP_REPOSITORY }}
   NPM_AUTH_TOKEN: ${{ secrets.NPM_AUTH_TOKEN }}
+  # Needed at build time (not just runtime) now - block-unit-price/itayose resolve
+  # their watched addresses via a live RPC call inside `npm run generate`, which runs
+  # during `docker build` (see Dockerfile). Same secrets already used below for the
+  # runtime Kubernetes Secret.
+  ETHEREUM_MAINNET_RPC_URL: ${{ secrets.ETHEREUM_MAINNET_RPC_URL }}
+  ETHEREUM_SEPOLIA_RPC_URL: ${{ secrets.ETHEREUM_SEPOLIA_RPC_URL }}
+  ARBITRUM_ONE_RPC_URL: ${{ secrets.ARBITRUM_ONE_RPC_URL }}
+  ARBITRUM_SEPOLIA_RPC_URL: ${{ secrets.ARBITRUM_SEPOLIA_RPC_URL }}
 
 jobs:
   identify-env:
@@ -76,6 +84,10 @@ jobs:
         run: |
           docker build \
             --secret id=npm_auth_token,env=NPM_AUTH_TOKEN \
+            --secret id=ethereum_mainnet_rpc_url,env=ETHEREUM_MAINNET_RPC_URL \
+            --secret id=ethereum_sepolia_rpc_url,env=ETHEREUM_SEPOLIA_RPC_URL \
+            --secret id=arbitrum_one_rpc_url,env=ARBITRUM_ONE_RPC_URL \
+            --secret id=arbitrum_sepolia_rpc_url,env=ARBITRUM_SEPOLIA_RPC_URL \
             --build-arg SF_ENV=${{ needs.identify-env.outputs.environment }} \
             --tag "${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE }}-${{ needs.identify-env.outputs.environment }}:${{ github.sha }}" \
             --tag "${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE }}-${{ needs.identify-env.outputs.environment }}:latest" \
