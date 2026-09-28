@@ -81,7 +81,9 @@ def main():
     env_label = os.environ.get("SF_ENV", "")
 
     os.makedirs(HISTORY_DIR, exist_ok=True)
-    history_path = os.path.join(HISTORY_DIR, f"{currency_name}_{maturity}.json")
+    history_path = os.path.join(
+        HISTORY_DIR, f"{network_slug}_{currency_name}_{maturity}.json"
+    )
 
     if os.path.exists(history_path):
         with open(history_path) as f:
