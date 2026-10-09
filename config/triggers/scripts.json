@@ -16,5 +16,23 @@
       "script_path": "./config/triggers/scripts/block_unit_price_check.py",
       "timeout_ms": 5000
     }
+  },
+  "sf_monitor_solvency_check": {
+    "name": "Custody Solvency Check",
+    "trigger_type": "script",
+    "config": {
+      "language": "Python",
+      "script_path": "./config/triggers/scripts/solvency_check.py",
+      "timeout_ms": 5000
+    }
+  },
+  "sf_monitor_fv_conservation_check": {
+    "name": "Future Value Conservation Check",
+    "trigger_type": "script",
+    "config": {
+      "language": "Python",
+      "script_path": "./config/triggers/scripts/fv_conservation_check.py",
+      "timeout_ms": 5000
+    }
   }
 }

@@ -47,6 +47,12 @@ dotenv.config();
 
 const REPO_ROOT = path.resolve(__dirname, '..');
 const MONITORS_DIR = path.join(REPO_ROOT, 'config', 'monitors');
+// Addresses the periodic invariant sweep needs (config/triggers/scripts/sweep.py). The
+// sweep runs the same checks as the script triggers but on a timer rather than off an
+// event, so it has no match payload to read a contract address from - and it's Python,
+// so it can't call deployments.ts itself. Emitting them here keeps the "never hand-type
+// an address" rule intact and bakes them into the image alongside the monitors.
+const SWEEP_TARGETS_PATH = path.join(REPO_ROOT, 'config', 'sweep-targets.json');
 
 function parseEnv(): SF_ENV {
   const value = process.env.SF_ENV;
@@ -57,8 +63,13 @@ function parseEnv(): SF_ENV {
   return value;
 }
 
-function monitorPath(network: string, concern: Concern): string {
-  return path.join(MONITORS_DIR, `${network}-${concern.key}.json`);
+function monitorPath(
+  network: string,
+  concern: Concern,
+  label?: string,
+): string {
+  const suffix = label ? `-${label.replace(/[^A-Za-z0-9_-]/g, '')}` : '';
+  return path.join(MONITORS_DIR, `${network}-${concern.key}${suffix}.json`);
 }
 
 function appliesTo(concern: Concern, network: string): boolean {
@@ -74,9 +85,10 @@ function buildMonitor(
   chain: ChainTarget,
   addresses: string[],
   concern: Concern,
+  label?: string,
 ) {
   return {
-    name: `${concern.label} - ${chain.display}`,
+    name: `${concern.label}${label ? ` ${label}` : ''} - ${chain.display}`,
     paused: false,
     networks: [chain.network],
     addresses: addresses.map((address) => ({
@@ -97,6 +109,7 @@ async function main(): Promise<void> {
   const env = parseEnv();
   const chains = ENV_CHAINS[env];
   const concerns = Object.values(CONCERN_DEFINITIONS);
+  const sweepTargets: Record<string, unknown> = {};
   let count = 0;
 
   for (const chain of chains) {
@@ -114,21 +127,59 @@ async function main(): Promise<void> {
 
     const client = getPublicClient(chain.network);
 
+    sweepTargets[chain.network] = {
+      display: chain.display,
+      TokenVault: artifacts.TokenVault.address,
+      CurrencyController: artifacts.CurrencyController.address,
+      LendingMarketController: artifacts.LendingMarketController.address,
+      GenesisValueVault: artifacts.GenesisValueVault.address,
+    };
+
     for (const concern of concerns) {
       if (!appliesTo(concern, chain.network)) continue;
 
-      const addresses = concern.resolveAddresses
+      const resolved = concern.resolveAddresses
         ? await concern.resolveAddresses({ chain, client, artifacts })
-        : [artifacts[concern.contractName].address];
+        : [{ address: artifacts[concern.contractName].address }];
 
-      const filePath = monitorPath(chain.network, concern);
-      writeJson(filePath, buildMonitor(chain, addresses, concern));
-      count += 1;
+      if (!concern.splitByAddress) {
+        writeJson(
+          monitorPath(chain.network, concern),
+          buildMonitor(
+            chain,
+            resolved.map(({ address }) => address),
+            concern,
+          ),
+        );
+        count += 1;
+        continue;
+      }
+
+      // One file per address, so a trigger script can identify the emitter from
+      // monitor.addresses[0]. The label -> address map goes into sweep-targets.json so
+      // the script (and the sweep) can map that address back to its currency.
+      const labelled: Record<string, string> = {};
+
+      for (const { address, label } of resolved) {
+        writeJson(
+          monitorPath(chain.network, concern, label),
+          buildMonitor(chain, [address], concern, label),
+        );
+        count += 1;
+        if (label) labelled[label] = address;
+      }
+
+      (sweepTargets[chain.network] as Record<string, unknown>)[concern.key] =
+        labelled;
     }
   }
 
+  writeJson(SWEEP_TARGETS_PATH, sweepTargets);
+
   // eslint-disable-next-line no-console
-  console.log(`generated ${count} monitor file(s) for env=${env}`);
+  console.log(
+    `generated ${count} monitor file(s) + sweep targets for env=${env}`,
+  );
 }
 
 main().catch((error) => {

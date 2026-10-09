@@ -39,6 +39,9 @@ export const CONTRACT_NAMES = [
   'LendingMarketController',
   'TokenVault',
   'CurrencyController',
+  // Not the target of any concern - resolved so the periodic sweep can record the
+  // genesis-value quantities (I4, observation only).
+  'GenesisValueVault',
 ] as const;
 export type ContractName = (typeof CONTRACT_NAMES)[number];
 
@@ -55,6 +58,15 @@ export interface ResolveAddressesContext {
   chain: ChainTarget;
   client: PublicClient;
   artifacts: Record<ContractName, ContractArtifact>;
+}
+
+// One address a concern resolved, plus what it corresponds to. `label` is the currency
+// name for the per-currency proxies (LendingMarket, FutureValueVault) - used to name
+// split monitor files and to let a trigger script map an emitting address back to its
+// currency (see splitByAddress below).
+export interface ResolvedAddress {
+  address: string;
+  label?: string;
 }
 
 // One contract event OZ Monitor should watch and alert on.
@@ -83,5 +95,15 @@ export interface Concern {
   // Resolved live via RPC at generate time (tools/concerns/lending-market-addresses.ts)
   // instead of a static artifact address. Concerns without this still resolve to
   // artifacts[contractName].address, as before.
-  resolveAddresses?: (ctx: ResolveAddressesContext) => Promise<string[]>;
+  resolveAddresses?: (
+    ctx: ResolveAddressesContext,
+  ) => Promise<ResolvedAddress[]>;
+  // Writes one monitor file per resolved address instead of a single file listing them
+  // all. Needed when a trigger script has to know which contract emitted the matched
+  // event and the event itself doesn't say: FutureValueVault.Transfer carries `maturity`
+  // but not `ccy`, so a script reading monitor.addresses[0] can only identify the
+  // emitter if the monitor holds exactly one address. Each file is named with the
+  // address's label and its label -> address mapping is written to
+  // config/sweep-targets.json for the script to resolve the currency from.
+  splitByAddress?: boolean;
 }

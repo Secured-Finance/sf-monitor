@@ -12,3 +12,10 @@ config/monitors/*-autorolls.json
 config/monitors/*-itayose.json
 config/monitors/*-totaldeposits.json
 config/monitors/*-blockunitprice.json
+config/monitors/*-solvency.json
+# splitByAddress concern - one file per currency, e.g. *-fvconservation-USDC.json
+config/monitors/*-fvconservation-*.json
+
+# Also generated: the per-network contract addresses the periodic sweep needs
+# (config/triggers/scripts/sweep.py). Environment-specific, same as the monitors.
+config/sweep-targets.json
