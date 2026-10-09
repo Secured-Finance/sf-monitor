@@ -96,8 +96,15 @@ jobs:
         run: |
           kubectl delete secret sf-monitor-secrets-${{ needs.identify-env.outputs.environment }} --ignore-not-found
 
+          # Severity routing (invariant-monitoring-spec.md §04). The declarative Slack
+          # triggers read these env vars directly and have no fallback of their own, so
+          # both are always set - defaulting to the single webhook when a dedicated
+          # channel hasn't been created yet, which keeps the split adoptable without a
+          # config change.
           kubectl create secret generic sf-monitor-secrets-${{ needs.identify-env.outputs.environment }} \
             --from-literal="SLACK_WEBHOOK_URL=${{ secrets.SLACK_WEBHOOK_URL }}" \
+            --from-literal="SLACK_WEBHOOK_URL_CRITICAL=${{ secrets.SLACK_WEBHOOK_URL_CRITICAL || secrets.SLACK_WEBHOOK_URL }}" \
+            --from-literal="SLACK_WEBHOOK_URL_INFO=${{ secrets.SLACK_WEBHOOK_URL_INFO || secrets.SLACK_WEBHOOK_URL }}" \
             --from-literal="ETHEREUM_MAINNET_RPC_URL=${{ secrets.ETHEREUM_MAINNET_RPC_URL }}" \
             --from-literal="ETHEREUM_SEPOLIA_RPC_URL=${{ secrets.ETHEREUM_SEPOLIA_RPC_URL }}" \
             --from-literal="ARBITRUM_ONE_RPC_URL=${{ secrets.ARBITRUM_ONE_RPC_URL }}" \
@@ -155,3 +162,55 @@ jobs:
 
           kubectl apply -f deployment.yaml
           kubectl rollout status deployment/${{ env.DEPLOYMENT_NAME }}-${{ needs.identify-env.outputs.environment }}
+
+      # The periodic invariant sweep (config/triggers/scripts/sweep.py). OZ Monitor is
+      # event-driven, but some invariants have no triggering event - and the sweep is
+      # also the backstop for anything the event path misses (a cursor gap, a restart, a
+      # dropped block, a monitor orphaned by a contract upgrade). Same image, same
+      # secrets, same generated config as the Deployment above.
+      - name: Deploy invariant sweep CronJob
+        run: |
+          cat <<EOF > sweep-cronjob.yaml
+          apiVersion: batch/v1
+          kind: CronJob
+          metadata:
+            name: ${{ env.DEPLOYMENT_NAME }}-sweep-${{ needs.identify-env.outputs.environment }}
+            labels:
+              app: ${{ env.DEPLOYMENT_NAME }}-sweep-${{ needs.identify-env.outputs.environment }}
+          spec:
+            schedule: "*/15 * * * *"
+            # A sweep that overlaps itself gains nothing and doubles RPC load.
+            concurrencyPolicy: Forbid
+            startingDeadlineSeconds: 300
+            successfulJobsHistoryLimit: 3
+            failedJobsHistoryLimit: 5
+            jobTemplate:
+              spec:
+                # The sweep exits non-zero on an invariant breach, which is a real
+                # finding rather than a transient error - retrying it would just repeat
+                # the same alert.
+                backoffLimit: 0
+                template:
+                  spec:
+                    restartPolicy: Never
+                    containers:
+                    - name: sweep
+                      image: "${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE }}-${{ needs.identify-env.outputs.environment }}:${{ github.sha }}"
+                      workingDir: /app
+                      command: ["python3", "config/triggers/scripts/sweep.py"]
+                      resources:
+                        requests:
+                          cpu: "50m"
+                          memory: "128Mi"
+                        limits:
+                          cpu: "500m"
+                          memory: "256Mi"
+                      env:
+                        - name: SF_ENV
+                          value: "${{ needs.identify-env.outputs.environment }}"
+                      envFrom:
+                        - secretRef:
+                            name: sf-monitor-secrets-${{ needs.identify-env.outputs.environment }}
+          EOF
+
+          kubectl apply -f sweep-cronjob.yaml

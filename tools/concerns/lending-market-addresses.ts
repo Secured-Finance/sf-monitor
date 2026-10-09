@@ -1,4 +1,5 @@
-import { ResolveAddressesContext } from '../types';
+import { hexToString } from 'viem';
+import { ResolveAddressesContext, ResolvedAddress } from '../types';
 
 // Resolves every currently-active currency's per-currency LendingMarket beacon proxy
 // address - the actual emitter of BlockUnitPriceHistoryUpdated/ItayoseExecuted (both
@@ -32,34 +33,63 @@ const LENDING_MARKET_CONTROLLER_ABI = [
     stateMutability: 'view',
     type: 'function',
   },
+  {
+    inputs: [{ internalType: 'bytes32', name: 'ccy', type: 'bytes32' }],
+    name: 'getFutureValueVault',
+    outputs: [{ internalType: 'address', name: '', type: 'address' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
 ] as const;
 
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 
-export async function resolveLendingMarketAddresses({
-  client,
-  artifacts,
-}: ResolveAddressesContext): Promise<string[]> {
+// Currency names are bytes32-encoded ASCII, right-padded with NULs.
+export function currencyName(ccy: `0x${string}`): string {
+  return hexToString(ccy, { size: 32 }).replace(/\0+$/, '');
+}
+
+// Shared by the LendingMarket and FutureValueVault resolvers: both enumerate the same
+// currency set and differ only in which per-currency proxy getter they call.
+export async function resolvePerCurrencyProxies(
+  { client, artifacts }: ResolveAddressesContext,
+  functionName: 'getLendingMarket' | 'getFutureValueVault',
+): Promise<ResolvedAddress[]> {
   const currencies = await client.readContract({
     address: artifacts.CurrencyController.address as `0x${string}`,
     abi: CURRENCY_CONTROLLER_ABI,
     functionName: 'getCurrencies',
   });
 
-  const addresses = await Promise.all(
-    currencies.map((ccy) =>
-      client.readContract({
+  const resolved = await Promise.all(
+    currencies.map(async (ccy) => ({
+      address: await client.readContract({
         address: artifacts.LendingMarketController.address as `0x${string}`,
         abi: LENDING_MARKET_CONTROLLER_ABI,
-        functionName: 'getLendingMarket',
+        functionName,
         args: [ccy],
       }),
-    ),
+      label: currencyName(ccy),
+    })),
   );
 
-  // getLendingMarket(ccy) returns the zero address for a currency CurrencyController
-  // knows about but that has no initialized LendingMarket yet on this deploy stage
+  // Both getters return the zero address for a currency CurrencyController knows about
+  // but that has no initialized market yet on this deploy stage
   // (isInitializedLendingMarket(ccy) checks genesisDates[ccy] != 0) - nothing will ever
   // emit from 0x0, so watching it is pure noise.
-  return addresses.filter((address) => address !== ZERO_ADDRESS);
+  return resolved.filter(({ address }) => address !== ZERO_ADDRESS);
+}
+
+export function resolveLendingMarketAddresses(
+  ctx: ResolveAddressesContext,
+): Promise<ResolvedAddress[]> {
+  return resolvePerCurrencyProxies(ctx, 'getLendingMarket');
+}
+
+// FutureValueVault is deployed per currency as a beacon proxy, same as LendingMarket,
+// and is the emitter of the Transfer events I1 watches.
+export function resolveFutureValueVaultAddresses(
+  ctx: ResolveAddressesContext,
+): Promise<ResolvedAddress[]> {
+  return resolvePerCurrencyProxies(ctx, 'getFutureValueVault');
 }

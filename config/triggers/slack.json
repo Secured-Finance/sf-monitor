@@ -19,7 +19,7 @@
     "config": {
       "slack_url": {
         "type": "environment",
-        "value": "SLACK_WEBHOOK_URL"
+        "value": "SLACK_WEBHOOK_URL_INFO"
       },
       "message": {
         "title": "${monitor.name} triggered",
@@ -33,7 +33,7 @@
     "config": {
       "slack_url": {
         "type": "environment",
-        "value": "SLACK_WEBHOOK_URL"
+        "value": "SLACK_WEBHOOK_URL_INFO"
       },
       "message": {
         "title": "${monitor.name} triggered",
@@ -47,7 +47,7 @@
     "config": {
       "slack_url": {
         "type": "environment",
-        "value": "SLACK_WEBHOOK_URL"
+        "value": "SLACK_WEBHOOK_URL_INFO"
       },
       "message": {
         "title": "${monitor.name} triggered",

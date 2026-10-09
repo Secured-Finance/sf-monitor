@@ -1,0 +1,155 @@
+[development:Ethereum Mainnet] Big Withdrawal Detected
+16.31% of USDC was withdrawn.
+User: 0xb149182cc2c023d16683a4b9bdada24d9ffa25cb
+Currency: USDC
+Amount: 3099999998
+Tx: https://etherscan.io/tx/0x6fdb1869659197947facc536823dbb58260d8db0e79949675ae87df2a9b82b9a
+
+[CRITICAL] [development] Future value conservation breach on Ethereum Mainnet
+USDC future value gap of 2493356888720 exceeds what 9999994 of pending settlement can explain.
+Currency: USDC
+Maturity: 1806019200
+Lend future value: 2493368287072
+Borrow future value: 11398352
+Pending order amount: 9999994
+Unexplained: 2493336887732
+Tx: https://etherscan.io/tx/0x6fdb1869659197947facc536823dbb58260d8db0e79949675ae87df2a9b82b9a
+
+[development:Ethereum Mainnet] Big Withdrawal Detected
+99.70% of WBTC was withdrawn.
+User: 0xe08d97e151473a848c3d9ca3f323cb720472d015
+Currency: WBTC
+Amount: 90900000
+Tx: https://etherscan.io/tx/0xcd6159860783d8d481cc4bf4dceddc88acdca6bb08f6445525b2904cfd75b1da
+
+[CRITICAL] [development] Future value conservation breach on Ethereum Mainnet
+WBTC future value gap of 150436082 exceeds what 997 of pending settlement can explain.
+Currency: WBTC
+Maturity: 1830211200
+Lend future value: 150544190
+Borrow future value: 108108
+Pending order amount: 997
+Unexplained: 150433088
+Tx: https://etherscan.io/tx/0xcd6159860783d8d481cc4bf4dceddc88acdca6bb08f6445525b2904cfd75b1da
+
+[development:Ethereum Mainnet] Big Withdrawal Detected
+100.62% of USDC was withdrawn.
+User: 0xa2233b751a27f0cd7cf58935798ae303b269a882
+Currency: USDC
+Amount: 16100000000
+Tx: https://etherscan.io/tx/0xf3627506a6d7d70ac993722539706e86aa442f69e8200149ba36f11e9eeafcb5
+
+[CRITICAL] [development] Future value conservation breach on Ethereum Mainnet
+USDC future value gap of 14156940494 exceeds what 999997 of pending settlement can explain.
+Currency: USDC
+Maturity: 1845936000
+Lend future value: 14156940494
+Borrow future value: 0
+Pending order amount: 999997
+Unexplained: 14154939500
+Tx: https://etherscan.io/tx/0xf3627506a6d7d70ac993722539706e86aa442f69e8200149ba36f11e9eeafcb5
+
+[12:33 AM][development:Ethereum Mainnet] Big Withdrawal Detected
+93.85% of ETH was withdrawn.
+User: 0xe08d97e151473a848c3d9ca3f323cb720472d015
+Currency: ETH
+Amount: 4600000000000000000
+Tx: https://etherscan.io/tx/0x4b3c70d0327cec387ec03169d63d85bea964f3bf791fc2f34f76ad663d684c3d
+
+[CRITICAL] [development] Future value conservation breach on Ethereum Mainnet
+ETH future value gap of 24194158075601368932 exceeds what 997 of pending settlement can explain.
+Currency: ETH
+Maturity: 1845936000
+Lend future value: 24194158075601368932
+Borrow future value: 0
+Pending order amount: 997
+Unexplained: 24194158075601365938
+Tx: https://etherscan.io/tx/0x4b3c70d0327cec387ec03169d63d85bea964f3bf791fc2f34f76ad663d684c3d
+
+[development:Ethereum Mainnet] Big Withdrawal Detected
+103.82% of JPYC was withdrawn.
+User: 0xeefce12cea20fff70d7526f151ffcf56986d19a7
+Currency: JPYC
+Amount: 4527422123519634578761814
+Tx: https://etherscan.io/tx/0xeaf30248f1f8d1d768b27a1911a91e7682f604fb686eef4bdd8a1c38480ba46d
+
+[development:Ethereum Mainnet] Big Withdrawal Detected
+139.48% of ETH was withdrawn.
+User: 0x61ad7caec2302767084b257f1fbf1b4c82b90095
+Currency: ETH
+Amount: 574050090368761243
+Tx: https://etherscan.io/tx/0xcf85f50679393aa291bafc547431e8e75685b05d081be8451dd7d20c0de488e7
+
+[CRITICAL] [development] Future value conservation breach on Ethereum Mainnet
+JPYC future value gap of 11767492685740543942768076 exceeds what 1079091741998652564920145 of pending settlement can explain.
+Currency: JPYC
+Maturity: 1790294400
+Lend future value: 13507801012686476401427186
+Borrow future value: 1740308326945932458659110
+Pending order amount: 1079091741998652564920145
+Unexplained: 9609309201743238812926786
+Tx: https://etherscan.io/tx/0x8944ba35184832f6e3c83b47fc3837f16abb24f988172179dec64ea8f6d545b4
+
+[CRITICAL] [development] Future value conservation breach on Ethereum Mainnet
+JPYC future value gap of 11765468649277897510950315 exceeds what 1081111730388373703874270 of pending settlement can explain.
+Currency: JPYC
+Maturity: 1790294400
+Lend future value: 13505776976223829969609425
+Borrow future value: 1740308326945932458659110
+Pending order amount: 1081111730388373703874270
+Unexplained: 9603245188501150103200775
+Tx: https://etherscan.io/tx/0xeaf30248f1f8d1d768b27a1911a91e7682f604fb686eef4bdd8a1c38480ba46d
+
+[CRITICAL] [development] Future value conservation breach on Ethereum Mainnet
+ETH future value gap of 8321930824781451920 exceeds what 17499999999999999 of pending settlement can explain.
+Currency: ETH
+Maturity: 1813881600
+Lend future value: 8322590915238862741
+Borrow future value: 660090457410821
+Pending order amount: 17499999999999999
+Unexplained: 8286930824781450922
+Tx: https://etherscan.io/tx/0xcf85f50679393aa291bafc547431e8e75685b05d081be8451dd7d20c0de488e7
+
+[CRITICAL] [development] Future value conservation breach on Ethereum Mainnet
+ETH future value gap of 857394321200183626 exceeds what 500000000000997 of pending settlement can explain.
+Currency: ETH
+Maturity: 1821744000
+Lend future value: 858200842796256794
+Borrow future value: 806521596073168
+Pending order amount: 500000000000997
+Unexplained: 856394321200180632
+Tx: https://etherscan.io/tx/0xd87caec60a17ad09188590affa2ff1540f2e647b8e42b57d73e661b78f2e6767
+
+[CRITICAL] [development] Future value conservation breach on Ethereum Mainnet
+WBTC future value gap of 744438 exceeds what 19997 of pending settlement can explain.
+Currency: WBTC
+Maturity: 1845936000
+Lend future value: 744438
+Borrow future value: 0
+Pending order amount: 19997
+Unexplained: 703444
+Tx: https://etherscan.io/tx/0x95c6f289dab7ca06ca84b0d33659308096df01a6a946b6fdf5b1a4ae31864753
+
+[development:Ethereum Mainnet] BlockUnitPrice Fluctuation Detected
+-0.10% fluctuation happened in JPYC market
+Currency: JPYC
+Maturity: September 25, 2026 12:00 AM UTC
+Fluctuation Rate: [9980, 9970]
+Tx: https://etherscan.io/tx/0x51784fa25714ca719ba26c1cceec48aa18ee8cb2507602cddb08b41ae57d7796
+
+[development:Ethereum Mainnet] Big Withdrawal Detected
+204.03% of JPYC was withdrawn.
+User: 0xa340340825fc2e6e8ee8c0821a531f9308590ba7
+Currency: JPYC
+Amount: 8666517639716912155239319
+Tx: https://etherscan.io/tx/0x51784fa25714ca719ba26c1cceec48aa18ee8cb2507602cddb08b41ae57d7796
+
+[CRITICAL] [development] Future value conservation breach on Ethereum Mainnet
+JPYC future value gap of 14954755698052004814390180 exceeds what 999999999999999996 of pending settlement can explain.
+Currency: JPYC
+Maturity: 1790294400
+Lend future value: 16695064024997937273049290
+Borrow future value: 1740308326945932458659110
+Pending order amount: 999999999999999996
+Unexplained: 14954753698052004814389188
+Tx: https://etherscan.io/tx/0x51784fa25714ca719ba26c1cceec48aa18ee8cb2507602cddb08b41ae57d7796
