@@ -3,9 +3,15 @@
 balance dropped >=1% block-over-block and this withdrawal accounts for >=1% of the
 prior balance, and if so alerts Slack.
 
-Per-event, not batched: OZ Monitor invokes this script once per matched event, so
-each run checks only the currency of the withdrawal that triggered it (rather than
-re-checking every vault currency in a block, as the old Defender Autotask did).
+Per-transaction, not per-event: OZ Monitor invokes this script once per matching
+transaction, with every Withdraw log in that transaction bundled into
+matched_on_args.events - a single transaction can withdraw more than one currency
+(e.g. closing positions in several at once), so this checks every distinct currency
+touched, not just the first. The "amount withdrawn" used for the share-of-balance
+threshold is the real net TokenVault balance drop (prev_balance - cur_balance), not
+any single event's amount - a transaction can net several Withdraw/deposit legs for
+the same currency, and the balance read already reflects the true net regardless of
+how many legs occurred.
 
 Invocation contract (OZ Monitor's script trigger): the process is spawned as
 `python3 -c <script>` with no extra argv - any configured trigger "arguments" arrive
@@ -74,6 +80,18 @@ def decode_bytes32_string(hex_str):
     return raw.rstrip(b"\x00").decode("utf-8", errors="replace")
 
 
+def all_matched_events(match_):
+    """Every matched event in this transaction, each as a {name: value} dict.
+
+    matched_on_args.events is a list, one entry per matching log OZ Monitor found in
+    the transaction - not a single event. A transaction can carry several Withdraw
+    logs (e.g. closing positions in more than one currency at once); callers must
+    handle every entry, not just the first.
+    """
+    events = (match_.get("matched_on_args") or {}).get("events") or []
+    return [{arg["name"]: arg["value"] for arg in ev["args"]} for ev in events]
+
+
 def main():
     payload = json.load(sys.stdin)
     match_ = payload["monitor_match"]["EVM"]
@@ -91,13 +109,15 @@ def main():
     )
     prev_block = cur_block - 1
 
-    event_args = {
-        arg["name"]: arg["value"]
-        for arg in match_["matched_on_args"]["events"][0]["args"]
-    }
-    ccy_hex = event_args["ccy"]
-    currency_name = decode_bytes32_string(ccy_hex)
-    withdrawn_amount = int(event_args["amount"])
+    # Group every matched Withdraw event by currency - a transaction can withdraw
+    # more than one currency, and each currency's events are checked independently
+    # below. The user shown in the alert is whichever event we saw first for that
+    # currency; with multiple withdrawers of the same currency in one tx this is
+    # representative, not exhaustive - the amount is what matters and that comes
+    # from the real balance drop, not from any single event.
+    events_by_ccy = {}
+    for event_args in all_matched_events(match_):
+        events_by_ccy.setdefault(event_args["ccy"], event_args)
 
     with open(os.path.join(NETWORKS_DIR, f"{network_slug}.json")) as f:
         network_config = json.load(f)
@@ -110,47 +130,53 @@ def main():
     env_label = os.environ.get("SF_ENV", "")
 
     w3 = Web3(Web3.HTTPProvider(os.environ[rpc_url_env].strip()))
-
     token_vault = w3.eth.contract(address=token_vault_address, abi=TOKEN_VAULT_ABI)
-    ccy_bytes32 = bytes.fromhex(ccy_hex[2:] if ccy_hex.startswith("0x") else ccy_hex)
-    token_address = token_vault.functions.getTokenAddress(ccy_bytes32).call(block_identifier=cur_block)
-    if int(token_address, 16) == 0:
-        print(f"TokenVault has no token registered for currency {currency_name} ({ccy_hex})", file=sys.stderr)
-        sys.exit(1)
 
-    token = w3.eth.contract(address=Web3.to_checksum_address(token_address), abi=ERC20_ABI)
-    cur_balance = token.functions.balanceOf(token_vault_address).call(block_identifier=cur_block)
-    prev_balance = token.functions.balanceOf(token_vault_address).call(block_identifier=prev_block)
+    for ccy_hex, event_args in events_by_ccy.items():
+        currency_name = decode_bytes32_string(ccy_hex)
 
-    if not prev_balance:
-        sys.exit(0)
+        ccy_bytes32 = bytes.fromhex(ccy_hex[2:] if ccy_hex.startswith("0x") else ccy_hex)
+        token_address = token_vault.functions.getTokenAddress(ccy_bytes32).call(block_identifier=cur_block)
+        if int(token_address, 16) == 0:
+            print(f"TokenVault has no token registered for currency {currency_name} ({ccy_hex})", file=sys.stderr)
+            continue
 
-    balance_movement_pct = ((cur_balance - prev_balance) / prev_balance) * 100
-    print(f"{currency_name} vault balance movement: {balance_movement_pct:.4f}% ({prev_balance} -> {cur_balance})")
+        token = w3.eth.contract(address=Web3.to_checksum_address(token_address), abi=ERC20_ABI)
+        cur_balance = token.functions.balanceOf(token_vault_address).call(block_identifier=cur_block)
+        prev_balance = token.functions.balanceOf(token_vault_address).call(block_identifier=prev_block)
 
-    if balance_movement_pct > -BALANCE_DROP_THRESHOLD_PCT:
-        sys.exit(0)
+        if not prev_balance:
+            continue
 
-    share_pct = (withdrawn_amount / prev_balance) * 100
-    print(f"Withdrawal share of prior balance: {share_pct:.4f}%")
+        balance_movement_pct = ((cur_balance - prev_balance) / prev_balance) * 100
+        print(f"{currency_name} vault balance movement: {balance_movement_pct:.4f}% ({prev_balance} -> {cur_balance})")
 
-    if share_pct < WITHDRAWAL_SHARE_THRESHOLD_PCT:
-        sys.exit(0)
+        if balance_movement_pct > -BALANCE_DROP_THRESHOLD_PCT:
+            continue
 
-    requests.post(
-        os.environ["SLACK_WEBHOOK_URL"].strip(),
-        json={
-            "text": (
-                f"[{env_label}:{network_name}] Big Withdrawal Detected\n"
-                f"{share_pct:.2f}% of {currency_name} was withdrawn.\n"
-                f"User: {event_args.get('user', '')}\n"
-                f"Currency: {currency_name}\n"
-                f"Amount: {withdrawn_amount}\n"
-                f"Tx: {explorer}/tx/{tx_hash}"
-            )
-        },
-        timeout=10,
-    )
+        # The real net amount withdrawn, from the balance itself - not any single
+        # event's amount, which can be one of several legs in the same transaction.
+        net_withdrawn = prev_balance - cur_balance
+        share_pct = (net_withdrawn / prev_balance) * 100
+        print(f"Withdrawal share of prior balance: {share_pct:.4f}%")
+
+        if share_pct < WITHDRAWAL_SHARE_THRESHOLD_PCT:
+            continue
+
+        requests.post(
+            os.environ["SLACK_WEBHOOK_URL"].strip(),
+            json={
+                "text": (
+                    f"[{env_label}:{network_name}] Big Withdrawal Detected\n"
+                    f"{share_pct:.2f}% of {currency_name} was withdrawn.\n"
+                    f"User: {event_args.get('user', '')}\n"
+                    f"Currency: {currency_name}\n"
+                    f"Amount: {net_withdrawn}\n"
+                    f"Tx: {explorer}/tx/{tx_hash}"
+                )
+            },
+            timeout=10,
+        )
 
 
 if __name__ == "__main__":
