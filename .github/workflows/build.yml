@@ -10,8 +10,9 @@ on:
 
 jobs:
   build:
-    name: build and test
+    name: Build and Test
     runs-on: ubuntu-latest
+    environment: development
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -39,3 +40,5 @@ jobs:
           SF_ENV=development npm run generate
         env:
           NPM_AUTH_TOKEN: ${{ secrets.NPM_AUTH_TOKEN }}
+          ETHEREUM_SEPOLIA_RPC_URL: ${{ secrets.ETHEREUM_SEPOLIA_RPC_URL }}
+          ARBITRUM_SEPOLIA_RPC_URL: ${{ secrets.ARBITRUM_SEPOLIA_RPC_URL }}

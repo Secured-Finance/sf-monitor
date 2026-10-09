@@ -13,8 +13,11 @@ KV store there, a JSON file per market under data/block_unit_price_history/ here
 directory is under the `data` volume mounted read-write into the container, same as the
 monitor's own last-processed-block cursor).
 
-Per-event, not batched: OZ Monitor invokes this script once per matched event, so each
-run only updates the (currency, maturity) market of the event that triggered it.
+Per-transaction, not per-event: matched_on_args.events bundles every matching log in the
+transaction, and a single transaction can touch more than one (currency, maturity)
+market - e.g. a batch action spanning multiple maturities of the same currency. Every
+distinct (ccy, maturity) pair gets its own rolling history file and is checked
+independently, not just the first matched event.
 
 Invocation contract (OZ Monitor's script trigger): the process is spawned as
 `python3 -c <script>` with no extra argv - any configured trigger "arguments" arrive
@@ -55,6 +58,17 @@ def decode_bytes32_string(hex_str):
     return raw.rstrip(b"\x00").decode("utf-8", errors="replace")
 
 
+def all_matched_events(match_):
+    """Every matched event in this transaction, each as a {name: value} dict.
+
+    matched_on_args.events is a list, one entry per matching log OZ Monitor found in
+    the transaction - not a single event. Callers must handle every entry, not just
+    the first.
+    """
+    events = (match_.get("matched_on_args") or {}).get("events") or []
+    return [{arg["name"]: arg["value"] for arg in ev["args"]} for ev in events]
+
+
 def main():
     payload = json.load(sys.stdin)
     match_ = payload["monitor_match"]["EVM"]
@@ -62,14 +76,14 @@ def main():
     network_slug = match_["network_slug"]
     tx_hash = match_["transaction"]["hash"]
 
-    event_args = {
-        arg["name"]: arg["value"]
-        for arg in match_["matched_on_args"]["events"][0]["args"]
-    }
-    ccy_hex = event_args["ccy"]
-    currency_name = decode_bytes32_string(ccy_hex)
-    maturity = int(event_args["maturity"])
-    block_unit_price = int(event_args["blockUnitPrice"])
+    # Group every matched event by (ccy, maturity) - a single transaction can touch
+    # more than one market for the same currency (or across currencies, if this
+    # monitor ever watched more than one address).
+    markets = {}
+    for event_args in all_matched_events(match_):
+        ccy_hex = event_args["ccy"]
+        maturity = int(event_args["maturity"])
+        markets[(ccy_hex, maturity)] = event_args
 
     with open(os.path.join(NETWORKS_DIR, f"{network_slug}.json")) as f:
         network_config = json.load(f)
@@ -81,47 +95,52 @@ def main():
     env_label = os.environ.get("SF_ENV", "")
 
     os.makedirs(HISTORY_DIR, exist_ok=True)
-    history_path = os.path.join(
-        HISTORY_DIR, f"{network_slug}_{currency_name}_{maturity}.json"
-    )
 
-    if os.path.exists(history_path):
-        with open(history_path) as f:
-            history = json.load(f)
-    else:
-        history = []
+    for (ccy_hex, maturity), event_args in markets.items():
+        currency_name = decode_bytes32_string(ccy_hex)
+        block_unit_price = int(event_args["blockUnitPrice"])
 
-    if len(history) >= HISTORY_WINDOW:
-        history.pop(0)
-    history.append(block_unit_price)
+        history_path = os.path.join(
+            HISTORY_DIR, f"{network_slug}_{currency_name}_{maturity}.json"
+        )
 
-    with open(history_path, "w") as f:
-        json.dump(history, f)
+        if os.path.exists(history_path):
+            with open(history_path) as f:
+                history = json.load(f)
+        else:
+            history = []
 
-    first = history[0]
-    last = history[-1]
-    change_percent = ((last - first) / first) * 100
-    maturity_str = datetime.fromtimestamp(maturity, tz=timezone.utc).strftime("%B %-d, %Y %-I:%M %p UTC")
+        if len(history) >= HISTORY_WINDOW:
+            history.pop(0)
+        history.append(block_unit_price)
 
-    print(f"Block Unit Price Fluctuation: {change_percent:.2f}% ({first} -> {last})")
+        with open(history_path, "w") as f:
+            json.dump(history, f)
 
-    if change_percent == 0:
-        sys.exit(0)
+        first = history[0]
+        last = history[-1]
+        change_percent = ((last - first) / first) * 100
+        maturity_str = datetime.fromtimestamp(maturity, tz=timezone.utc).strftime("%B %-d, %Y %-I:%M %p UTC")
 
-    requests.post(
-        os.environ["SLACK_WEBHOOK_URL"].strip(),
-        json={
-            "text": (
-                f"[{env_label}:{network_name}] BlockUnitPrice Fluctuation Detected\n"
-                f"{change_percent:.2f}% fluctuation happened in {currency_name} market\n"
-                f"Currency: {currency_name}\n"
-                f"Maturity: {maturity_str}\n"
-                f"Fluctuation Rate: {history}\n"
-                f"Tx: {explorer}/tx/{tx_hash}"
-            )
-        },
-        timeout=10,
-    )
+        print(f"{currency_name}@{maturity} Block Unit Price Fluctuation: {change_percent:.2f}% ({first} -> {last})")
+
+        if change_percent == 0:
+            continue
+
+        requests.post(
+            os.environ["SLACK_WEBHOOK_URL"].strip(),
+            json={
+                "text": (
+                    f"[{env_label}:{network_name}] BlockUnitPrice Fluctuation Detected\n"
+                    f"{change_percent:.2f}% fluctuation happened in {currency_name} market\n"
+                    f"Currency: {currency_name}\n"
+                    f"Maturity: {maturity_str}\n"
+                    f"Fluctuation Rate: {history}\n"
+                    f"Tx: {explorer}/tx/{tx_hash}"
+                )
+            },
+            timeout=10,
+        )
 
 
 if __name__ == "__main__":
