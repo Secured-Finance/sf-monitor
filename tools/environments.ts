@@ -17,6 +17,9 @@ export const DEPLOY_STAGES = [
   'development-arb',
   'staging-arb',
   'arbitrum-one',
+  'development-fil',
+  'staging-fil',
+  'filecoin-mainnet',
 ] as const;
 
 export type DeployStage = (typeof DEPLOY_STAGES)[number];
@@ -44,6 +47,11 @@ export const ENV_CHAINS: Record<SF_ENV, ChainTarget[]> = {
       deployStage: 'development-arb',
       display: 'Arbitrum Sepolia',
     },
+    {
+      network: 'filecoin_calibration',
+      deployStage: 'development-fil',
+      display: 'Filecoin Calibration',
+    },
   ],
   staging: [
     {
@@ -56,6 +64,11 @@ export const ENV_CHAINS: Record<SF_ENV, ChainTarget[]> = {
       deployStage: 'staging-arb',
       display: 'Arbitrum Sepolia',
     },
+    {
+      network: 'filecoin_calibration',
+      deployStage: 'staging-fil',
+      display: 'Filecoin Calibration',
+    },
   ],
   production: [
     {
@@ -67,6 +80,11 @@ export const ENV_CHAINS: Record<SF_ENV, ChainTarget[]> = {
       network: 'arbitrum_one',
       deployStage: 'arbitrum-one',
       display: 'Arbitrum One',
+    },
+    {
+      network: 'filecoin_mainnet',
+      deployStage: 'filecoin-mainnet',
+      display: 'Filecoin Mainnet',
     },
   ],
 };
