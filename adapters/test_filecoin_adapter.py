@@ -388,6 +388,135 @@ class TestSilentlyEmptyLogs(unittest.TestCase):
         self.assertEqual(answer['result'], [])
 
 
+class TestEmptyLogEvidenceFailsClosed(unittest.TestCase):
+    """When the bloom isn't cached, the fallback header decides whether an empty log
+    result is trusted - so unavailable or unverifiable evidence must reject, never pass.
+    """
+
+    HEIGHT = FINALIZED_HEIGHT - 30
+
+    def _call(self, header_answer):
+        """header_answer: dict to return for the fallback header, or an exception."""
+
+        def send(query):
+            if query['method'] == 'eth_getLogs':
+                return {'jsonrpc': '2.0', 'id': query['id'], 'result': []}
+            if isinstance(header_answer, Exception):
+                raise header_answer
+            return dict(header_answer, id=header_answer.get('id', query['id']))
+
+        f = {'fromBlock': hex(self.HEIGHT), 'toBlock': hex(self.HEIGHT)}
+        return call(req('eth_getLogs', [f]), send)
+
+    def _header(self, **over):
+        block = dict(FINALIZED_BLOCK, number=hex(self.HEIGHT), logsBloom=BLOOM_EMPTY)
+        block.update(over.pop('block', {}))
+        return {'jsonrpc': '2.0', 'result': block, **over}
+
+    def test_header_request_timing_out_is_rejected(self):
+        answer = self._call(TimeoutError('upstream timed out'))
+        self.assertEqual(answer['error']['code'], -32098)
+
+    def test_header_for_the_wrong_height_is_rejected(self):
+        answer = self._call(self._header(block={'number': hex(self.HEIGHT + 1)}))
+        self.assertEqual(answer['error']['code'], -32098)
+
+    def test_header_error_envelope_is_rejected(self):
+        answer = self._call({'jsonrpc': '2.0', 'error': {'code': -32000, 'message': 'nope'}})
+        self.assertEqual(answer['error']['code'], -32098)
+
+    def test_header_with_mismatched_envelope_id_is_rejected(self):
+        answer = self._call(self._header(id=4242))
+        self.assertEqual(answer['error']['code'], -32098)
+
+    def test_header_without_block_identity_is_rejected(self):
+        block = {k: v for k, v in FINALIZED_BLOCK.items() if k != 'hash'}
+        block.update(number=hex(self.HEIGHT), logsBloom=BLOOM_EMPTY)
+        answer = self._call({'jsonrpc': '2.0', 'result': block})
+        self.assertEqual(answer['error']['code'], -32098)
+
+    def test_valid_header_with_empty_bloom_is_accepted(self):
+        answer = self._call(self._header())
+        self.assertEqual(answer['result'], [])
+
+    def test_valid_header_reporting_logs_is_rejected(self):
+        answer = self._call(self._header(block={'logsBloom': BLOOM_WITH_LOGS}))
+        self.assertEqual(answer['error']['code'], -32098)
+
+
+class TestNullRoundDoesNotStallOnTheLogsCheck(unittest.TestCase):
+    """Regression guard for the interaction between the two fixes: tightening the
+    empty-log check would turn every null round into a stall unless the synthesized
+    epoch is cached as genuinely empty."""
+
+    def test_null_round_then_empty_logs_passes_via_the_cache(self):
+        blooms = BloomCache()
+        height = FINALIZED_HEIGHT - 10
+        upstream = FakeUpstream(null_rounds=[height])
+        synthesized = bridge(
+            req('eth_getBlockByNumber', [hex(height), True]), upstream, MAX_AGE, now=NOW, blooms=blooms
+        )
+        self.assertEqual(int(synthesized['result']['number'], 16), height)
+        self.assertIs(blooms.get(height), False, 'null epoch must be cached as empty')
+
+        # Upstream still has no header for a null round, so if the cache were not
+        # consulted this would now (correctly) reject - and null rounds would stall.
+        def send(query):
+            if query['method'] == 'eth_getLogs':
+                return {'jsonrpc': '2.0', 'id': query['id'], 'result': []}
+            return upstream(query)
+
+        f = {'fromBlock': hex(height), 'toBlock': hex(height)}
+        answer = bridge(req('eth_getLogs', [f]), send, MAX_AGE, now=NOW, blooms=blooms)
+        self.assertEqual(answer['result'], [])
+
+
+class TestChainConfirmation(unittest.TestCase):
+    def setUp(self):
+        import filecoin_adapter
+
+        self.mod = filecoin_adapter
+        self._backoff = filecoin_adapter.STARTUP_BACKOFF_SECONDS
+        filecoin_adapter.STARTUP_BACKOFF_SECONDS = 0
+
+    def tearDown(self):
+        self.mod.STARTUP_BACKOFF_SECONDS = self._backoff
+
+    def test_transient_error_envelope_is_retried_then_succeeds(self):
+        calls = []
+
+        def send(query):
+            calls.append(query)
+            if len(calls) < 3:
+                return {'jsonrpc': '2.0', 'id': query['id'], 'error': {'code': -32000, 'message': 'busy'}}
+            return {'jsonrpc': '2.0', 'id': query['id'], 'result': '0x13a'}
+
+        self.mod.confirm_chain(send, 314)  # must not raise
+        self.assertEqual(len(calls), 3)
+
+    def test_wrong_chain_exits_immediately_without_retrying(self):
+        calls = []
+
+        def send(query):
+            calls.append(query)
+            return {'jsonrpc': '2.0', 'id': query['id'], 'result': '0x4cb2f'}  # calibration
+
+        with self.assertRaises(SystemExit):
+            self.mod.confirm_chain(send, 314)
+        self.assertEqual(len(calls), 1, 'a wrong chain is config error, not a blip')
+
+    def test_unreachable_upstream_exits_after_bounded_attempts(self):
+        calls = []
+
+        def send(query):
+            calls.append(query)
+            raise ConnectionError('refused')
+
+        with self.assertRaises(SystemExit):
+            self.mod.confirm_chain(send, 314)
+        self.assertEqual(len(calls), self.mod.STARTUP_ATTEMPTS)
+
+
 class TestEmptyEpochShape(unittest.TestCase):
     def test_every_zeroed_identity_field_is_32_bytes(self):
         block = empty_epoch(FINALIZED_HEIGHT - 1, FINALIZED_BLOCK)

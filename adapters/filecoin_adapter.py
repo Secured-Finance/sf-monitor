@@ -132,8 +132,9 @@ def empty_epoch(number, template):
 
 def bridge(request, send, max_finalized_age, now=None, blooms=None):
     """Handle one request, validating every upstream answer. Fails closed."""
+    blooms = BloomCache() if blooms is None else blooms
     try:
-        return _bridge(request, _validating(send, max_finalized_age, now, blooms))
+        return _bridge(request, _validating(send, max_finalized_age, now, blooms), blooms)
     except Rejected as rejection:
         # Logged, because the alternative is a silent permanent stall: the watcher
         # retries the same range forever and nothing says why.
@@ -291,8 +292,14 @@ def _reject_silently_empty_logs(result, params, blooms, send):
     has_logs = blooms.get(low)
     if has_logs is None:
         has_logs = _header_has_logs(send, low)
-        if has_logs is None:
-            return  # couldn't establish either way - don't invent a failure
+    if has_logs is None:
+        # Unavailable evidence is not evidence of absence. Accepting [] here would
+        # reopen exactly the silent skip this check exists to close, so the absence of
+        # a trustworthy header is itself a rejection.
+        raise Rejected(
+            f'Cannot establish whether block {low} holds logs (header missing, '
+            'unverifiable or at the wrong height); an empty eth_getLogs cannot be trusted'
+        )
     if has_logs:
         raise Rejected(
             f'Block {low} header reports logs present but eth_getLogs returned none; '
@@ -301,18 +308,39 @@ def _reject_silently_empty_logs(result, params, blooms, send):
 
 
 def _header_has_logs(send, height):
-    """Whether the header at `height` reports any logs. None if undeterminable."""
+    """Whether the header at `height` reports any logs. None if undeterminable.
+
+    This answer decides whether an empty log result is trusted, so the header backing
+    it is validated as strictly as any other upstream response: envelope, block
+    identity, and above all the height - a header for some *other* block says nothing
+    about this one. None means "no trustworthy evidence", and the caller treats that as
+    a rejection rather than a pass.
+    """
+    query = {'jsonrpc': '2.0', 'id': 0, 'method': 'eth_getBlockByNumber', 'params': [hex(height), False]}
     try:
-        answer = send(
-            {'jsonrpc': '2.0', 'id': 0, 'method': 'eth_getBlockByNumber', 'params': [hex(height), False]}
-        )
-    except Exception:  # noqa: BLE001 - treated as "unknown", not as a failure
+        answer = send(query)
+    except Exception:  # noqa: BLE001 - timeout/transport failure is "unknown"
         return None
-    block = answer.get('result') if isinstance(answer, dict) else None
-    if not isinstance(block, dict) or not isinstance(block.get('logsBloom'), str):
+    if (
+        not isinstance(answer, dict)
+        or answer.get('jsonrpc') != '2.0'
+        or answer.get('id') != query['id']
+        or 'error' in answer
+    ):
+        return None
+    block = answer.get('result')
+    if not isinstance(block, dict) or not _is_hash(block.get('hash', '')):
         return None
     try:
-        return int(block['logsBloom'], 16) != 0
+        if int(block.get('number'), 16) != height:
+            return None
+    except (TypeError, ValueError):
+        return None
+    bloom = block.get('logsBloom')
+    if not isinstance(bloom, str):
+        return None
+    try:
+        return int(bloom, 16) != 0
     except ValueError:
         return None
 
@@ -342,7 +370,7 @@ def _is_hash(value):
     return True
 
 
-def _bridge(request, send):
+def _bridge(request, send, blooms):
     method = request.get('method')
     params = request.get('params') or []
 
@@ -369,7 +397,7 @@ def _bridge(request, send):
     answer = send(request)
     if method == 'eth_getBlockByNumber' and _is_height_request(params):
         height = int(params[0], 16)
-        synthesized = _maybe_null_round(answer, height, request, send)
+        synthesized = _maybe_null_round(answer, height, request, send, blooms)
         if synthesized is not None:
             return synthesized
     return answer
@@ -379,7 +407,7 @@ def _is_height_request(params):
     return len(params) == 2 and isinstance(params[0], str) and params[0].startswith('0x')
 
 
-def _maybe_null_round(answer, height, request, send):
+def _maybe_null_round(answer, height, request, send, blooms):
     """An empty block for `height`, if upstream confirmed it is a finalized null round.
 
     Matched on the JSON-RPC error *code* rather than the human-readable message:
@@ -403,11 +431,13 @@ def _maybe_null_round(answer, height, request, send):
         return None
 
     log(null_epoch_placeholder=height, upstream_message=error.get('message'))
-    return {
-        'jsonrpc': '2.0',
-        'id': request.get('id'),
-        'result': empty_epoch(height, block),
-    }
+    synthesized = empty_epoch(height, block)
+    # Record the null epoch as genuinely empty. Without this, the logs check below
+    # would later find no cached bloom, re-ask upstream for a header that does not
+    # exist (it is a null round), get nothing it can trust, and reject a correct
+    # empty-log answer - turning every null round into a stall.
+    blooms.remember(synthesized)
+    return {'jsonrpc': '2.0', 'id': request.get('id'), 'result': synthesized}
 
 
 def make_sender(upstream, timeout=10):
@@ -429,15 +459,21 @@ def confirm_chain(send, expected_chain_id):
     for attempt in range(1, STARTUP_ATTEMPTS + 1):
         try:
             answer = send({'jsonrpc': '2.0', 'id': 0, 'method': 'eth_chainId', 'params': []})
-            actual = answer.get('result')
+            actual = answer.get('result') if isinstance(answer, dict) else None
             if actual == expected_hex:
                 log(upstream_chain_id=actual, expected=expected_hex, ok=True)
                 return
-            # A wrong chain is a configuration error, not a blip - fail immediately.
-            raise SystemExit(
-                f'Upstream reports chain ID {actual}, expected {expected_hex} '
-                f'({expected_chain_id}); refusing to serve another chain\'s data'
-            )
+            if isinstance(actual, str) and actual.startswith('0x'):
+                # A valid response naming a different chain is a configuration error,
+                # not a blip - fail immediately rather than retrying into it.
+                raise SystemExit(
+                    f'Upstream reports chain ID {actual}, expected {expected_hex} '
+                    f'({expected_chain_id}); refusing to serve another chain\'s data'
+                )
+            # Anything else (an error envelope, a missing or malformed result) says
+            # nothing about which chain this is - treat it as transient and retry,
+            # instead of reading it as "chain ID None" and exiting on the first blip.
+            raise Rejected(f'no usable chain id in upstream response: {answer!r}')
         except SystemExit:
             raise
         except Exception as error:  # noqa: BLE001 - transient upstream failure

@@ -150,6 +150,16 @@ jobs:
                 containers:
                 - name: ${{ env.DEPLOYMENT_NAME }}-${{ needs.identify-env.outputs.environment }}
                   image: "${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE }}-${{ needs.identify-env.outputs.environment }}:${{ github.sha }}"
+                  # OZ Monitor creates its per-network watchers once at boot and only
+                  # logs if a client cannot be built (src/main.rs), with nothing to
+                  # retry afterwards. Both containers start together, so without this
+                  # gate a slow adapter leaves Filecoin with no watcher at all while
+                  # the Pod stays Running and healthy. The wait exits non-zero if the
+                  # adapter never answers, so the Pod crash-loops visibly instead.
+                  command:
+                    - /bin/sh
+                    - -c
+                    - python3 /app/adapters/wait_for_adapter.py && exec /app/openzeppelin-monitor
                   resources:
                     requests:
                       cpu: "100m"
@@ -208,20 +218,26 @@ jobs:
                   #
                   # The startupProbe covers the adapter's bounded upstream retry at boot
                   # (up to ~60s), so liveness cannot kill it before it ever binds.
+                  # timeoutSeconds is set explicitly on all three: it defaults to 1s,
+                  # which is shorter than the probes' own HTTP timeouts (and than the
+                  # python3 start-up cost), so the defaults would fail spuriously.
                   startupProbe:
                     exec:
                       command: ["python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8547/live', timeout=5)"]
                     periodSeconds: 5
+                    timeoutSeconds: 8
                     failureThreshold: 24
                   livenessProbe:
                     exec:
                       command: ["python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8547/live', timeout=5)"]
                     periodSeconds: 30
+                    timeoutSeconds: 8
                     failureThreshold: 3
                   readinessProbe:
                     exec:
                       command: ["python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8547/ready', timeout=10)"]
                     periodSeconds: 30
+                    timeoutSeconds: 15
                   resources:
                     requests:
                       cpu: "25m"

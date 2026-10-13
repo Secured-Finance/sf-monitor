@@ -34,6 +34,12 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      # Adapter unit tests (stdlib unittest, no network, no install step). These were
+      # not executed by this workflow before, so a green build did not mean the
+      # adapter's fail-closed behaviour had been checked.
+      - name: Test adapters
+        run: npm test
+
       - name: Generate monitors (smoke test)
         run: |
           SF_ENV=development npm run pregenerate

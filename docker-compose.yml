@@ -34,7 +34,12 @@ services:
     depends_on:
       - monitor
     network_mode: 'service:monitor'
-    command: ['python3', '/app/adapters/filecoin_adapter.py']
+    # `entrypoint`, not `command`: the upstream image's ENTRYPOINT is
+    # /app/openzeppelin-monitor, and Compose appends `command` to it as arguments - so
+    # a command-only override runs the monitor binary with the script path as an argv,
+    # and the adapter never starts. Kubernetes `command` replaces the entrypoint, which
+    # is why the GKE manifest can override it there instead.
+    entrypoint: ['python3', '/app/adapters/filecoin_adapter.py']
     environment:
       FILECOIN_UPSTREAM_RPC_URL: ${FILECOIN_UPSTREAM_RPC_URL:?set FILECOIN_UPSTREAM_RPC_URL in .env to the Filecoin RPC matching SF_ENV - the adapter must not silently bridge the wrong chain}
       FILECOIN_EXPECTED_CHAIN_ID: ${FILECOIN_EXPECTED_CHAIN_ID:-314159}
