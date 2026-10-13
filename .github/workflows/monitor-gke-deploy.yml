@@ -34,6 +34,13 @@ env:
   ETHEREUM_SEPOLIA_RPC_URL: ${{ secrets.ETHEREUM_SEPOLIA_RPC_URL }}
   ARBITRUM_ONE_RPC_URL: ${{ secrets.ARBITRUM_ONE_RPC_URL }}
   ARBITRUM_SEPOLIA_RPC_URL: ${{ secrets.ARBITRUM_SEPOLIA_RPC_URL }}
+  # Filecoin's real upstream endpoints, used by the generator at build time and by the
+  # adapter sidecar at runtime. These fall back to the public GLIF endpoints when no
+  # secret is set, which is shared infrastructure with no SLA or rate-limit guarantee -
+  # the "Report Filecoin endpoint source" step below makes that visible in the run log
+  # rather than letting a forgotten secret pass unnoticed.
+  FILECOIN_MAINNET_RPC_URL: ${{ secrets.FILECOIN_MAINNET_RPC_URL || 'https://api.node.glif.io/rpc/v1' }}
+  FILECOIN_CALIBRATION_RPC_URL: ${{ secrets.FILECOIN_CALIBRATION_RPC_URL || 'https://api.calibration.node.glif.io/rpc/v1' }}
 
 jobs:
   identify-env:
@@ -74,6 +81,19 @@ jobs:
         run: |
           gcloud container clusters get-credentials ${{ env.GKE_CLUSTER }} --zone ${{ env.GKE_ZONE }} --project ${{ env.PROJECT_ID }}
 
+      - name: Report Filecoin endpoint source
+        run: |
+          if [ -n "${{ secrets.FILECOIN_MAINNET_RPC_URL }}" ]; then
+            echo "Filecoin mainnet: using FILECOIN_MAINNET_RPC_URL secret"
+          else
+            echo "::warning::Filecoin mainnet: no FILECOIN_MAINNET_RPC_URL secret set - falling back to the public GLIF endpoint (shared, rate-limited, no SLA)"
+          fi
+          if [ -n "${{ secrets.FILECOIN_CALIBRATION_RPC_URL }}" ]; then
+            echo "Filecoin calibration: using FILECOIN_CALIBRATION_RPC_URL secret"
+          else
+            echo "::warning::Filecoin calibration: no FILECOIN_CALIBRATION_RPC_URL secret set - falling back to the public GLIF endpoint (shared, rate-limited, no SLA)"
+          fi
+
       - name: Build
         run: |
           docker build \
@@ -82,6 +102,8 @@ jobs:
             --secret id=ethereum_sepolia_rpc_url,env=ETHEREUM_SEPOLIA_RPC_URL \
             --secret id=arbitrum_one_rpc_url,env=ARBITRUM_ONE_RPC_URL \
             --secret id=arbitrum_sepolia_rpc_url,env=ARBITRUM_SEPOLIA_RPC_URL \
+            --secret id=filecoin_mainnet_rpc_url,env=FILECOIN_MAINNET_RPC_URL \
+            --secret id=filecoin_calibration_rpc_url,env=FILECOIN_CALIBRATION_RPC_URL \
             --build-arg SF_ENV=${{ needs.identify-env.outputs.environment }} \
             --tag "${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE }}-${{ needs.identify-env.outputs.environment }}:${{ github.sha }}" \
             --tag "${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE }}-${{ needs.identify-env.outputs.environment }}:latest" \
@@ -101,7 +123,8 @@ jobs:
             --from-literal="ETHEREUM_MAINNET_RPC_URL=${{ secrets.ETHEREUM_MAINNET_RPC_URL }}" \
             --from-literal="ETHEREUM_SEPOLIA_RPC_URL=${{ secrets.ETHEREUM_SEPOLIA_RPC_URL }}" \
             --from-literal="ARBITRUM_ONE_RPC_URL=${{ secrets.ARBITRUM_ONE_RPC_URL }}" \
-            --from-literal="ARBITRUM_SEPOLIA_RPC_URL=${{ secrets.ARBITRUM_SEPOLIA_RPC_URL }}"
+            --from-literal="ARBITRUM_SEPOLIA_RPC_URL=${{ secrets.ARBITRUM_SEPOLIA_RPC_URL }}" \
+            --from-literal="FILECOIN_UPSTREAM_RPC_URL=${{ needs.identify-env.outputs.environment == 'production' && env.FILECOIN_MAINNET_RPC_URL || env.FILECOIN_CALIBRATION_RPC_URL }}"
 
       - name: Deploy
         run: |
@@ -127,6 +150,16 @@ jobs:
                 containers:
                 - name: ${{ env.DEPLOYMENT_NAME }}-${{ needs.identify-env.outputs.environment }}
                   image: "${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE }}-${{ needs.identify-env.outputs.environment }}:${{ github.sha }}"
+                  # OZ Monitor creates its per-network watchers once at boot and only
+                  # logs if a client cannot be built (src/main.rs), with nothing to
+                  # retry afterwards. Both containers start together, so without this
+                  # gate a slow adapter leaves Filecoin with no watcher at all while
+                  # the Pod stays Running and healthy. The wait exits non-zero if the
+                  # adapter never answers, so the Pod crash-loops visibly instead.
+                  command:
+                    - /bin/sh
+                    - -c
+                    - python3 /app/adapters/wait_for_adapter.py && exec /app/openzeppelin-monitor
                   resources:
                     requests:
                       cpu: "100m"
@@ -141,12 +174,77 @@ jobs:
                       value: "info"
                     - name: IN_DOCKER
                       value: "true"
+                    # config/networks/filecoin_*.json points OZ Monitor (and the Python
+                    # trigger scripts) at the adapter sidecar below, not at Filecoin
+                    # directly. Same Pod, so plain loopback.
+                    - name: FILECOIN_ADAPTER_URL
+                      value: "http://127.0.0.1:8547"
                   envFrom:
                     - secretRef:
                         name: sf-monitor-secrets-${{ needs.identify-env.outputs.environment }}
                   volumeMounts:
                     - name: data
                       mountPath: /app/data
+                # Filecoin null-round bridge (adapters/filecoin_adapter.py). Runs in
+                # every environment, not just production, so development/staging on
+                # Calibration exercise the identical code path before it reaches
+                # mainnet. Same image as the monitor - it only changes the command.
+                #
+                # Liveness deliberately hits /live, which is cheap and does not touch
+                # upstream: it restarts a wedged HTTP loop (the real failure mode for a
+                # threaded Python server) without turning a GLIF outage into a restart
+                # storm. /ready does probe upstream, but is observability only -
+                # readiness never gates loopback traffic inside a Pod.
+                - name: filecoin-rpc-adapter
+                  image: "${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE }}-${{ needs.identify-env.outputs.environment }}:${{ github.sha }}"
+                  command: ["python3", "/app/adapters/filecoin_adapter.py"]
+                  env:
+                    - name: FILECOIN_EXPECTED_CHAIN_ID
+                      value: "${{ needs.identify-env.outputs.environment == 'production' && '314' || '314159' }}"
+                    # Must exceed the network's real finality lag or the staleness guard
+                    # rejects every watermark read and halts monitoring: measured ~12 min
+                    # on mainnet but ~98 min on Calibration.
+                    - name: FILECOIN_MAX_FINALIZED_AGE_SECONDS
+                      value: "${{ needs.identify-env.outputs.environment == 'production' && '1800' || '10800' }}"
+                    - name: FILECOIN_UPSTREAM_RPC_URL
+                      valueFrom:
+                        secretKeyRef:
+                          name: sf-monitor-secrets-${{ needs.identify-env.outputs.environment }}
+                          key: FILECOIN_UPSTREAM_RPC_URL
+                  # exec, not httpGet: the adapter binds 127.0.0.1 so it is reachable
+                  # only from inside this Pod, while httpGet probes come from the
+                  # kubelet via the Pod IP and would always fail. exec runs in the
+                  # container, so the loopback-only bind stays as it is.
+                  #
+                  # The startupProbe covers the adapter's bounded upstream retry at boot
+                  # (up to ~60s), so liveness cannot kill it before it ever binds.
+                  # timeoutSeconds is set explicitly on all three: it defaults to 1s,
+                  # which is shorter than the probes' own HTTP timeouts (and than the
+                  # python3 start-up cost), so the defaults would fail spuriously.
+                  startupProbe:
+                    exec:
+                      command: ["python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8547/live', timeout=5)"]
+                    periodSeconds: 5
+                    timeoutSeconds: 8
+                    failureThreshold: 24
+                  livenessProbe:
+                    exec:
+                      command: ["python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8547/live', timeout=5)"]
+                    periodSeconds: 30
+                    timeoutSeconds: 8
+                    failureThreshold: 3
+                  readinessProbe:
+                    exec:
+                      command: ["python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8547/ready', timeout=10)"]
+                    periodSeconds: 30
+                    timeoutSeconds: 15
+                  resources:
+                    requests:
+                      cpu: "25m"
+                      memory: "32Mi"
+                    limits:
+                      cpu: "250m"
+                      memory: "128Mi"
                 volumes:
                   - name: data
                     emptyDir: {}

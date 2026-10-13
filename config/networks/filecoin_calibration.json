@@ -1,0 +1,21 @@
+{
+  "network_type": "EVM",
+  "slug": "filecoin_calibration",
+  "name": "Filecoin Calibration",
+  "rpc_urls": [
+    {
+      "type_": "rpc",
+      "url": {
+        "type": "environment",
+        "value": "FILECOIN_ADAPTER_URL"
+      },
+      "weight": 100
+    }
+  ],
+  "chain_id": 314159,
+  "block_time_ms": 30000,
+  "confirmation_blocks": 1,
+  "cron_schedule": "0 */1 * * * *",
+  "max_past_blocks": "unlimited",
+  "store_blocks": false
+}

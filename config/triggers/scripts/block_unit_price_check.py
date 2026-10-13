@@ -19,28 +19,19 @@ market - e.g. a batch action spanning multiple maturities of the same currency. 
 distinct (ccy, maturity) pair gets its own rolling history file and is checked
 independently, not just the first matched event.
 
-Invocation contract (OZ Monitor's script trigger): the process is spawned as
-`python3 -c <script>` with no extra argv - any configured trigger "arguments" arrive
-bundled into the JSON on stdin as `args`, not as sys.argv (see
-services/trigger/script/executor.rs in the OpenZeppelin Monitor source). stdin is
-`{"monitor_match": {"EVM": {...}}, "args": [...]}`; the script exits 0 on success,
-non-zero + stderr on failure.
-
-Inputs: no "arguments" are configured for this trigger (see
-config/triggers/scripts.json) - everything below comes from the match payload or from
-config mounted alongside it:
-  - network_slug and the human-readable network name: config/networks/<network_slug>.json
-    (mounted read-only into the container), same as total_deposits_check.py.
-  - the explorer base URL: network_explorers.json next to this script (can't live in
-    config/networks/*.json - OZ Monitor's own Network struct rejects unknown fields).
-  - the env label: SF_ENV, present via docker-compose's `env_file: .env`.
+Invocation contract (stdin payload, trigger "arguments") and alert formatting/delivery:
+see sf_alerts.read_payload and sf_alerts.AlertContext. No "arguments" are configured
+for this trigger (config/triggers/scripts.json); the network name, explorer base URL and
+environment label all come from there. Everything this script adds on top is the rolling
+history below.
 """
 import json
 import os
 import sys
-from datetime import datetime, timezone
 
-import requests
+sys.path.insert(0, os.path.join("config", "triggers", "scripts"))
+
+import sf_alerts  # noqa: E402 - path above must be set before this import
 
 HISTORY_WINDOW = 5
 
@@ -48,30 +39,11 @@ HISTORY_WINDOW = 5
 # isn't defined - paths below are relative to the container's cwd (/app, set by
 # WORKDIR in the upstream openzeppelin-monitor image), same as this trigger's own
 # script_path in config/triggers/scripts.json.
-NETWORKS_DIR = os.path.join("config", "networks")
-EXPLORERS_PATH = os.path.join("config", "triggers", "scripts", "network_explorers.json")
 HISTORY_DIR = os.path.join("data", "block_unit_price_history")
 
 
-def decode_bytes32_string(hex_str):
-    raw = bytes.fromhex(hex_str[2:] if hex_str.startswith("0x") else hex_str)
-    return raw.rstrip(b"\x00").decode("utf-8", errors="replace")
-
-
-def all_matched_events(match_):
-    """Every matched event in this transaction, each as a {name: value} dict.
-
-    matched_on_args.events is a list, one entry per matching log OZ Monitor found in
-    the transaction - not a single event. Callers must handle every entry, not just
-    the first.
-    """
-    events = (match_.get("matched_on_args") or {}).get("events") or []
-    return [{arg["name"]: arg["value"] for arg in ev["args"]} for ev in events]
-
-
 def main():
-    payload = json.load(sys.stdin)
-    match_ = payload["monitor_match"]["EVM"]
+    match_, _ = sf_alerts.read_payload()
 
     network_slug = match_["network_slug"]
     tx_hash = match_["transaction"]["hash"]
@@ -80,25 +52,18 @@ def main():
     # more than one market for the same currency (or across currencies, if this
     # monitor ever watched more than one address).
     markets = {}
-    for event_args in all_matched_events(match_):
+    for event_args in sf_alerts.matched_events(match_):
         ccy_hex = event_args["ccy"]
-        maturity = int(event_args["maturity"])
+        maturity = sf_alerts.to_int(event_args["maturity"])
         markets[(ccy_hex, maturity)] = event_args
 
-    with open(os.path.join(NETWORKS_DIR, f"{network_slug}.json")) as f:
-        network_config = json.load(f)
-    network_name = network_config["name"]
-
-    with open(EXPLORERS_PATH) as f:
-        explorer = json.load(f)[network_slug]
-
-    env_label = os.environ.get("SF_ENV", "")
+    ctx = sf_alerts.AlertContext.from_match(match_)
 
     os.makedirs(HISTORY_DIR, exist_ok=True)
 
     for (ccy_hex, maturity), event_args in markets.items():
-        currency_name = decode_bytes32_string(ccy_hex)
-        block_unit_price = int(event_args["blockUnitPrice"])
+        currency_name = sf_alerts.decode_bytes32_string(ccy_hex)
+        block_unit_price = sf_alerts.to_int(event_args["blockUnitPrice"])
 
         history_path = os.path.join(
             HISTORY_DIR, f"{network_slug}_{currency_name}_{maturity}.json"
@@ -120,26 +85,27 @@ def main():
         first = history[0]
         last = history[-1]
         change_percent = ((last - first) / first) * 100
-        maturity_str = datetime.fromtimestamp(maturity, tz=timezone.utc).strftime("%B %-d, %Y %-I:%M %p UTC")
 
         print(f"{currency_name}@{maturity} Block Unit Price Fluctuation: {change_percent:.2f}% ({first} -> {last})")
 
         if change_percent == 0:
             continue
 
-        requests.post(
-            os.environ["SLACK_WEBHOOK_URL"].strip(),
-            json={
-                "text": (
-                    f"[{env_label}:{network_name}] BlockUnitPrice Fluctuation Detected\n"
-                    f"{change_percent:.2f}% fluctuation happened in {currency_name} market\n"
-                    f"Currency: {currency_name}\n"
-                    f"Maturity: {maturity_str}\n"
-                    f"Fluctuation Rate: {history}\n"
-                    f"Tx: {explorer}/tx/{tx_hash}"
-                )
-            },
-            timeout=10,
+        # Unit prices are out of Constants.PRICE_DIGIT (10000 = par), so the history is
+        # shown as percentages of face value rather than as the raw integers it stores.
+        price_history = " -> ".join(sf_alerts.format_unit_price(price) for price in history)
+
+        sf_alerts.send_alert(
+            ctx,
+            "Block Unit Price Fluctuation Detected",
+            [
+                ("Currency", currency_name),
+                ("Maturity", sf_alerts.format_timestamp(maturity)),
+                ("Block Unit Price", sf_alerts.format_unit_price(last)),
+                ("Recent Prices", price_history),
+                ("Tx", ctx.tx_link(tx_hash)),
+            ],
+            summary=f"{change_percent:.2f}% fluctuation happened in the {currency_name} market",
         )
 
 

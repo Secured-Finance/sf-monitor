@@ -7,7 +7,10 @@ export const itayose: Concern = {
   label: 'Itayose',
   eventSignature:
     'ItayoseExecuted(bytes32,uint256,uint256,uint256,uint256,uint256)',
-  trigger: { type: 'slack', id: 'sf_monitor_slack_itayose' },
+  // A script trigger purely for formatting: a declarative Slack trigger can only
+  // print raw event args (bytes32 currency, Unix maturity, unit prices as integers out
+  // of 10000) - see config/triggers/scripts/event_alert.py.
+  trigger: { type: 'script', id: 'sf_monitor_itayose_alert' },
   // Emitted by the per-currency LendingMarket beacon proxy, not LendingMarketController
   // - see tools/concerns/lending-market-addresses.ts.
   resolveAddresses: resolveLendingMarketAddresses,
