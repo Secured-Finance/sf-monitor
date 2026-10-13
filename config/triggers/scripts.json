@@ -16,5 +16,35 @@
       "script_path": "./config/triggers/scripts/block_unit_price_check.py",
       "timeout_ms": 20000
     }
+  },
+  "sf_monitor_liquidations_alert": {
+    "name": "Liquidation Alert",
+    "trigger_type": "script",
+    "config": {
+      "language": "Python",
+      "script_path": "./config/triggers/scripts/event_alert.py",
+      "arguments": ["liquidations"],
+      "timeout_ms": 20000
+    }
+  },
+  "sf_monitor_autorolls_alert": {
+    "name": "Auto Roll Alert",
+    "trigger_type": "script",
+    "config": {
+      "language": "Python",
+      "script_path": "./config/triggers/scripts/event_alert.py",
+      "arguments": ["autorolls"],
+      "timeout_ms": 20000
+    }
+  },
+  "sf_monitor_itayose_alert": {
+    "name": "Itayose Alert",
+    "trigger_type": "script",
+    "config": {
+      "language": "Python",
+      "script_path": "./config/triggers/scripts/event_alert.py",
+      "arguments": ["itayose"],
+      "timeout_ms": 20000
+    }
   }
 }

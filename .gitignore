@@ -14,3 +14,6 @@ config/monitors/*-autorolls.json
 config/monitors/*-itayose.json
 config/monitors/*-totaldeposits.json
 config/monitors/*-blockunitprice.json
+# Per-environment contract addresses for the trigger scripts, written by the same
+# generator run (see tools/generate-monitors.ts).
+config/triggers/scripts/contract_addresses.json

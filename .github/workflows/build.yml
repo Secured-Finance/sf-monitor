@@ -34,10 +34,11 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
-      # Adapter unit tests (stdlib unittest, no network, no install step). These were
-      # not executed by this workflow before, so a green build did not mean the
-      # adapter's fail-closed behaviour had been checked.
-      - name: Test adapters
+      # Adapter and alert-formatting unit tests (stdlib unittest, no network, no
+      # install step - web3/requests are imported lazily by the code under test). The
+      # adapter tests were not executed by this workflow before, so a green build did
+      # not mean the adapter's fail-closed behaviour had been checked.
+      - name: Test adapters and alert formatting
         run: npm test
 
       - name: Generate monitors (smoke test)
