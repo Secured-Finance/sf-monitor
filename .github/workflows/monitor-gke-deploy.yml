@@ -72,6 +72,11 @@ jobs:
         with:
           project_id: ${{ env.PROJECT_ID }}
           install_components: 'gke-gcloud-auth-plugin'
+          # Pinned: newer gcloud releases crash gke-gcloud-auth-plugin with
+          # "'Credentials' object has no attribute 'private_key_id'" on a service
+          # account key login (588.0.0 reproduced it). 570.0.0 is the version
+          # Secured-Finance/sf-operations pinned for the same problem (PR #56).
+          version: '570.0.0'
 
       - name: Configure Docker
         run: |
