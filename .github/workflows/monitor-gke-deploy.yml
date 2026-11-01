@@ -129,6 +129,20 @@ jobs:
       - name: Deploy
         run: |
           cat <<EOF > deployment.yaml
+          # Holds /app/data (per-network last-block cursor + block-unit-price history)
+          # so it survives redeploys, reschedules and node drains. Applying an existing
+          # PVC is a no-op, so the disk and its contents persist across every deploy.
+          # Per-environment name: each environment watches different chains.
+          apiVersion: v1
+          kind: PersistentVolumeClaim
+          metadata:
+            name: sf-monitor-data-${{ needs.identify-env.outputs.environment }}
+          spec:
+            accessModes: [ReadWriteOnce]
+            resources:
+              requests:
+                storage: 1Gi
+          ---
           apiVersion: apps/v1
           kind: Deployment
           metadata:
@@ -137,6 +151,8 @@ jobs:
               app: ${{ env.DEPLOYMENT_NAME }}-${{ needs.identify-env.outputs.environment }}
           spec:
             replicas: 1
+            # Must stay Recreate: the data disk is ReadWriteOnce, so the old Pod has to
+            # release it before the new one mounts it. RollingUpdate would deadlock.
             strategy:
               type: Recreate
             selector:
@@ -146,7 +162,17 @@ jobs:
               metadata:
                 labels:
                   app: ${{ env.DEPLOYMENT_NAME }}-${{ needs.identify-env.outputs.environment }}
+                # Changes on every run so a re-run on the same commit still rolls the
+                # Pod. Otherwise a rotated Secret (e.g. SLACK_WEBHOOK_URL) would never
+                # be picked up: the image tag is the commit SHA, the template would be
+                # identical, and envFrom is only read at container start.
+                annotations:
+                  sf-monitor/deploy-run: "${{ github.run_id }}-${{ github.run_attempt }}"
               spec:
+                # A fresh PD is root-owned; fsGroup makes it group-writable in case the
+                # upstream image runs as non-root.
+                securityContext:
+                  fsGroup: 2000
                 containers:
                 - name: ${{ env.DEPLOYMENT_NAME }}-${{ needs.identify-env.outputs.environment }}
                   image: "${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE }}-${{ needs.identify-env.outputs.environment }}:${{ github.sha }}"
@@ -247,7 +273,8 @@ jobs:
                       memory: "128Mi"
                 volumes:
                   - name: data
-                    emptyDir: {}
+                    persistentVolumeClaim:
+                      claimName: sf-monitor-data-${{ needs.identify-env.outputs.environment }}
                 restartPolicy: Always
           EOF
 
