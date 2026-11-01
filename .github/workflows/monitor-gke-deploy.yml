@@ -72,6 +72,15 @@ jobs:
         with:
           project_id: ${{ env.PROJECT_ID }}
           install_components: 'gke-gcloud-auth-plugin'
+          # Pinned: with `latest`, a new release crashed gke-gcloud-auth-plugin
+          # ('Credentials' object has no attribute 'private_key_id') on a SA-key
+          # login that had worked unchanged for months. 588.0.0 is a best guess at
+          # the release current when deploys last passed (2026-10-13) - adjust if
+          # the `Print gcloud version` step shows a different known-good number.
+          version: '588.0.0'
+
+      - name: Print gcloud version
+        run: gcloud version
 
       - name: Configure Docker
         run: |
