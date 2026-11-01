@@ -47,6 +47,20 @@ dotenv.config();
 
 const REPO_ROOT = path.resolve(__dirname, '..');
 const MONITORS_DIR = path.join(REPO_ROOT, 'config', 'monitors');
+// Trigger scripts need addresses for contracts their own monitor doesn't watch - a
+// liquidation or itayose alert formats amounts in token decimals, which only TokenVault
+// can map a currency to (getTokenAddress), while the matched address is
+// LendingMarketController or a LendingMarket proxy. The scripts can't require()
+// @secured-finance/contracts (no Node in the runtime image, no npm auth either), so the
+// same artifacts this generator already resolved are written out for them here, per
+// network, for the active SF_ENV only - same lifecycle as config/monitors/*.json.
+const CONTRACT_ADDRESSES_PATH = path.join(
+  REPO_ROOT,
+  'config',
+  'triggers',
+  'scripts',
+  'contract_addresses.json',
+);
 
 function parseEnv(): SF_ENV {
   const value = process.env.SF_ENV;
@@ -98,6 +112,7 @@ async function main(): Promise<void> {
   const chains = ENV_CHAINS[env];
   const concerns = Object.values(CONCERN_DEFINITIONS);
   let count = 0;
+  const contractAddresses: Record<string, Record<string, string>> = {};
 
   for (const chain of chains) {
     // Every known contract's artifact is resolved up front, regardless of which
@@ -111,6 +126,13 @@ async function main(): Promise<void> {
         getContractArtifact(contractName, chain.deployStage),
       ]),
     ) as Record<ContractName, ContractArtifact>;
+
+    contractAddresses[chain.network] = Object.fromEntries(
+      CONTRACT_NAMES.map((contractName) => [
+        contractName,
+        artifacts[contractName].address,
+      ]),
+    );
 
     const client = getPublicClient(chain.network);
 
@@ -127,8 +149,17 @@ async function main(): Promise<void> {
     }
   }
 
+  // Rewritten whole, never merged into: it must describe exactly the environment whose
+  // monitors are on disk, so a leftover entry from a previous SF_ENV can't have a
+  // trigger script formatting an alert against another deployment's TokenVault.
+  writeJson(CONTRACT_ADDRESSES_PATH, contractAddresses);
+
   // eslint-disable-next-line no-console
-  console.log(`generated ${count} monitor file(s) for env=${env}`);
+  console.log(
+    `generated ${count} monitor file(s) + contract addresses for ${
+      chains.length
+    } network(s) for env=${env}`,
+  );
 }
 
 main().catch((error) => {

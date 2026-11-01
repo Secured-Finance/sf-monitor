@@ -49,12 +49,13 @@ This builds the monitor image and starts it with `config/`, `data/`, and `logs/`
 | `npm run typecheck` | Type-check the generator (`tools/`) |
 | `npm run lint:check` / `lint:fix` | Lint the generator |
 | `npm run prettier:check` / `prettier:fix` | Check/fix formatting |
+| `npm test` | Run the Python tests for the Filecoin adapter (`adapters/`) and the alert formatting (`tests/`) |
 
 ## Project layout
 
 - `config/networks/` — per-network RPC/chain definitions
 - `config/monitors/` — generated (gitignored) and hand-written monitor definitions
-- `config/triggers/` — alert destinations (Slack, local logging, custom scripts)
+- `config/triggers/` — alert destinations: the Python trigger scripts that format and send every Slack alert (`config/triggers/scripts/`, shared formatting in `sf_alerts.py`), plus local match logging
 - `tools/` — the monitor generator (see `tools/concerns/` for one module per watched condition)
 - `data/`, `logs/` — runtime state and match logs (gitignored)
 

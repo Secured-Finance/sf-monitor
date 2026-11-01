@@ -6,7 +6,10 @@ export const liquidations: Concern = {
   label: 'Liquidations',
   eventSignature:
     'LiquidationExecuted(address,bytes32,bytes32,uint256,uint256)',
-  trigger: { type: 'slack', id: 'sf_monitor_slack_liquidations' },
+  // A script trigger purely for formatting: a declarative Slack trigger can only
+  // print raw event args (bytes32 currency, Unix maturity, base-unit amount) - see
+  // config/triggers/scripts/event_alert.py.
+  trigger: { type: 'script', id: 'sf_monitor_liquidations_alert' },
   libraryEventAbi: {
     anonymous: false,
     inputs: [

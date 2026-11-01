@@ -19,3 +19,32 @@ services:
       - ./config:/app/config/:ro
       - ${MONITOR_DATA_DIR:?MONITOR_DATA_DIR must be set in .env - a /dev/null fallback would silently drop last-processed-block persistence}:/app/data
       - ${LOG_DATA_DIR:-./logs}:/app/logs
+
+  # Filecoin null-round bridge (adapters/filecoin_adapter.py), mirroring the GKE
+  # sidecar: same image, same loopback address, so FILECOIN_ADAPTER_URL resolves
+  # identically here and in the cluster. `network_mode: service:monitor` joins the
+  # monitor's network namespace - that shared loopback is the whole point, since
+  # compose services otherwise each get their own and 127.0.0.1 would not reach this.
+  #
+  # Only needed when the active SF_ENV includes a Filecoin chain (all three currently
+  # do - see tools/environments.ts). Point FILECOIN_UPSTREAM_RPC_URL at the endpoint
+  # for that env's chain: Calibration for development/staging, mainnet for production.
+  filecoin-adapter:
+    image: sf-monitor:local
+    depends_on:
+      - monitor
+    network_mode: 'service:monitor'
+    # `entrypoint`, not `command`: the upstream image's ENTRYPOINT is
+    # /app/openzeppelin-monitor, and Compose appends `command` to it as arguments - so
+    # a command-only override runs the monitor binary with the script path as an argv,
+    # and the adapter never starts. Kubernetes `command` replaces the entrypoint, which
+    # is why the GKE manifest can override it there instead.
+    entrypoint: ['python3', '/app/adapters/filecoin_adapter.py']
+    environment:
+      FILECOIN_UPSTREAM_RPC_URL: ${FILECOIN_UPSTREAM_RPC_URL:?set FILECOIN_UPSTREAM_RPC_URL in .env to the Filecoin RPC matching SF_ENV - the adapter must not silently bridge the wrong chain}
+      FILECOIN_EXPECTED_CHAIN_ID: ${FILECOIN_EXPECTED_CHAIN_ID:-314159}
+      FILECOIN_MAX_FINALIZED_AGE_SECONDS: ${FILECOIN_MAX_FINALIZED_AGE_SECONDS:-10800}
+    restart: on-failure:5
+    mem_swappiness: 0
+    security_opt:
+      - no-new-privileges

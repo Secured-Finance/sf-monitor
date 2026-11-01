@@ -5,7 +5,10 @@ export const autoRolls: Concern = {
   contractName: 'LendingMarketController',
   label: 'Auto Rolls',
   eventSignature: 'OrderBooksRotated(bytes32,uint256,uint256)',
-  trigger: { type: 'slack', id: 'sf_monitor_slack_autorolls' },
+  // A script trigger purely for formatting: a declarative Slack trigger can only
+  // print raw event args (bytes32 currency, Unix maturity) - see
+  // config/triggers/scripts/event_alert.py.
+  trigger: { type: 'script', id: 'sf_monitor_autorolls_alert' },
   libraryEventAbi: {
     anonymous: false,
     inputs: [
